@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { serverSupabase } from "@/lib/supabase/server";
 import { COACH_SYSTEM, profileText } from "@/lib/coach/knowledge";
 import { historySummary } from "@/lib/coach/context";
-import { PROPOSE_PROGRAM_TOOL, isValidDraft, normalizeDraft, type ProgramDraft } from "@/lib/coach/program";
+import { PROPOSE_PROGRAM_TOOL, PROPOSE_PROGRAM_TOOL_STRICT, draftProblem, isValidDraft, normalizeDraft, type ProgramDraft } from "@/lib/coach/program";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -65,42 +65,86 @@ export async function POST(req: Request) {
       const send = (o: unknown) => controller.enqueue(enc.encode(JSON.stringify(o) + "\n"));
       let text = "";
       try {
-        const stream = client.messages.stream({
-          model: MODEL,
-          // Sonnet 5 thinks adaptively and thinking counts toward max_tokens – leave plenty of room for the program JSON.
-          max_tokens: 32000,
-          output_config: { effort: "medium" },
-          system: [
-            { type: "text", text: COACH_SYSTEM, cache_control: { type: "ephemeral" } },
-            { type: "text", text: ctx.join("\n\n") },
-          ],
-          tools: [PROPOSE_PROGRAM_TOOL],
-          messages: msgs,
-        });
-        stream.on("text", (delta) => {
-          text += delta;
-          send({ t: "text", d: delta });
-        });
-        stream.on("streamEvent", (ev) => {
-          if (ev.type !== "content_block_start") return;
-          if (ev.content_block.type === "tool_use") send({ t: "status", d: "Bygger programmet…" });
-          else if (ev.content_block.type === "thinking") send({ t: "status", d: "Tänker…" });
-        });
-        const final = await stream.finalMessage();
-        const tool = final.content.find((c) => c.type === "tool_use" && c.name === "propose_program");
+        const convo: Anthropic.MessageParam[] = [...msgs];
+        let useStrict = process.env.COACH_STRICT_TOOLS !== "0";
         let draft: ProgramDraft | null = null;
-        if (tool && tool.type === "tool_use") {
+        let final: Anthropic.Message | null = null;
+        const usage: Record<string, unknown>[] = [];
+        let rejected: unknown = null;
+
+        // Up to 3 rounds: if the tool input is unusable we tell the model why and let it call again.
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const params = {
+            model: MODEL,
+            // Sonnet 5 thinks adaptively and thinking counts toward max_tokens – leave plenty of room for the program JSON.
+            max_tokens: 32000,
+            output_config: { effort: "medium" as const },
+            system: [
+              { type: "text" as const, text: COACH_SYSTEM, cache_control: { type: "ephemeral" as const } },
+              { type: "text" as const, text: ctx.join("\n\n") },
+            ],
+            tools: [useStrict ? PROPOSE_PROGRAM_TOOL_STRICT : PROPOSE_PROGRAM_TOOL],
+            messages: convo,
+          };
+          const stream = client.messages.stream(params as Anthropic.MessageCreateParamsStreaming);
+          stream.on("text", (delta) => {
+            text += delta;
+            send({ t: "text", d: delta });
+          });
+          stream.on("streamEvent", (ev) => {
+            if (ev.type !== "content_block_start") return;
+            if (ev.content_block.type === "tool_use") send({ t: "status", d: "Bygger programmet…" });
+            else if (ev.content_block.type === "thinking") send({ t: "status", d: "Tänker…" });
+          });
+          try {
+            final = await stream.finalMessage();
+          } catch (e) {
+            // Strict tools not accepted for this model/schema → fall back once to the plain tool.
+            if (useStrict && e instanceof Anthropic.APIError && e.status === 400) {
+              useStrict = false;
+              attempt--;
+              continue;
+            }
+            throw e;
+          }
+          usage.push({ ...final.usage, stop_reason: final.stop_reason, strict: useStrict });
+
+          const tool = final.content.find((c) => c.type === "tool_use" && c.name === "propose_program");
+          if (!tool || tool.type !== "tool_use") {
+            if (final.stop_reason === "max_tokens") send({ t: "error", d: "Svaret blev för långt och klipptes. Försök igen." });
+            break;
+          }
           const d = normalizeDraft(tool.input);
-          if (final.stop_reason !== "max_tokens" && isValidDraft(d)) draft = d;
-          else send({ t: "error", d: "Programmet blev inte komplett (svaret klipptes). Skriv t.ex. “bygg programmet igen” så gör coachen ett nytt försök." });
-        } else if (final.stop_reason === "max_tokens") {
-          send({ t: "error", d: "Svaret blev för långt och klipptes. Försök igen." });
+          const problem = final.stop_reason === "max_tokens" ? "svaret klipptes (max_tokens)" : draftProblem(d);
+          if (!problem && isValidDraft(d)) {
+            draft = d;
+            break;
+          }
+          rejected = tool.input;
+          send({ t: "status", d: "Rättar programmet…" });
+          convo.push({ role: "assistant", content: final.content });
+          convo.push({
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: tool.id,
+                is_error: true,
+                content: `Programmet kunde inte visas: ${problem}. Anropa propose_program igen med HELA programmet. days och exercises ska vara riktiga JSON-arrayer (inte strängar). Skriv ingen ny text till användaren.`,
+              },
+            ],
+          });
+        }
+
+        if (!draft && rejected) {
+          send({ t: "error", d: "Coachen lyckades inte få ihop ett giltigt program. Skriv “bygg programmet igen” eller förenkla önskemålet lite." });
         }
         if (draft) send({ t: "program", d: draft });
+        const finalUsage = { rounds: usage, ...(rejected && !draft ? { rejected_input: rejected } : {}) };
 
         const { data: saved } = await sb
           .from("coach_messages")
-          .insert({ chat_id: chatId, role: "assistant", content: text, program_draft: draft, usage: final.usage })
+          .insert({ chat_id: chatId, role: "assistant", content: text, program_draft: draft, usage: finalUsage })
           .select("id")
           .single();
         await sb

@@ -100,6 +100,34 @@ export const PROPOSE_PROGRAM_TOOL = {
   },
 };
 
+/** Strict tool variant: grammar-constrained output guarantees valid JSON with real arrays. */
+function strictify(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(strictify);
+  if (!schema || typeof schema !== "object") return schema;
+  const o: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(schema as Record<string, unknown>)) {
+    if (["minimum", "maximum", "minLength", "maxLength"].includes(k)) continue;
+    o[k] = k === "properties" ? Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([pk, pv]) => [pk, strictify(pv)])) : strictify(v);
+  }
+  if (o.type === "object") o.additionalProperties = false;
+  return o;
+}
+export const PROPOSE_PROGRAM_TOOL_STRICT = {
+  ...PROPOSE_PROGRAM_TOOL,
+  strict: true,
+  input_schema: strictify(PROPOSE_PROGRAM_TOOL.input_schema) as typeof PROPOSE_PROGRAM_TOOL.input_schema,
+};
+
+/** Human-readable reason why a draft is not usable, or null if OK. */
+export function draftProblem(d: Partial<ProgramDraft> | null | undefined): string | null {
+  if (!d || typeof d !== "object") return "inget program i anropet";
+  if (!d.name?.trim()) return "name saknas";
+  if (!Array.isArray(d.days) || d.days.length === 0) return "days saknas eller är tom (days måste vara en JSON-array, inte en sträng)";
+  const bad = d.days.findIndex((x) => !Array.isArray(x.exercises) || x.exercises.length === 0);
+  if (bad >= 0) return `dag ${bad + 1} saknar övningar (exercises måste vara en icke-tom array)`;
+  return null;
+}
+
 /** A draft must have a name and at least one day with exercises to be shown/saved. */
 export function isValidDraft(d: Partial<ProgramDraft> | null | undefined): d is ProgramDraft {
   return !!d && typeof d === "object" && typeof d.name === "string" && !!d.name.trim() && Array.isArray(d.days) && d.days.length > 0 && d.days.every((x) => Array.isArray(x.exercises) && x.exercises.length > 0 && x.exercises.every((e) => !!e.name));
@@ -152,12 +180,15 @@ export function normalizeDraft(raw: unknown): ProgramDraft {
     const w = unstring<WeekPlan>(w0, { week: i + 1, rir: "" });
     return { ...w, week: num(w.week, i + 1), rir: String(w.rir ?? "") };
   });
+  const cleanDays = days
+    .map((x) => ({ ...x, exercises: x.exercises.filter((e) => typeof e.name === "string" && e.name.trim()) }))
+    .filter((x) => x.exercises.length > 0);
   return {
     ...(d as ProgramDraft),
     name: typeof d.name === "string" ? d.name : "",
-    days,
+    days: cleanDays,
     week_plan,
-    days_per_week: num(d.days_per_week, days.length),
+    days_per_week: num(d.days_per_week, cleanDays.length),
     weeks: num(d.weeks, week_plan.length),
   };
 }
