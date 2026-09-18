@@ -10,6 +10,10 @@ import { EQUIPMENT, IMAGE_BASE, dateLabel, e1rm, effectiveLoad, kg, muscleLabel,
 import type { Exercise, WorkoutSet } from "@/lib/types";
 import { LineChart } from "@/components/Charts";
 import { CreateExercise } from "@/components/ExercisePicker";
+import { STATUS_STYLE, StatusIcon } from "@/components/ProgressBadge";
+import { loadProgression, loadSettings, saveSetting, type ExerciseSetting } from "@/lib/progress-data";
+import type { PResult } from "@/lib/progression";
+import { parseNum } from "@/lib/format";
 
 type Session = { id: string; name: string; started_at: string; workout_exercises: { id: string; sets: WorkoutSet[] }[] };
 const RANGES = [
@@ -29,6 +33,16 @@ export default function ExerciseDetail() {
   const [range, setRange] = useState<(typeof RANGES)[number]["key"]>("1y");
   const [editing, setEditing] = useState(false);
   const [limit, setLimit] = useState(15);
+  const [prog, setProg] = useState<PResult | null>(null);
+  const [setting, setSetting] = useState<ExerciseSetting | null>(null);
+  const [progKey, setProgKey] = useState(0);
+
+  useEffect(() => {
+    loadSettings([id]).then((m) => setSetting(m.get(id) ?? null));
+  }, [id]);
+  useEffect(() => {
+    loadProgression({ exerciseIds: [id] }).then((m) => setProg(m.get(id) ?? null));
+  }, [id, progKey]);
 
   useEffect(() => {
     loadExercises().then((all) => setEx(all.find((e) => e.id === id) ?? null));
@@ -111,6 +125,17 @@ export default function ExerciseDetail() {
 
       {tab === "stats" && (
         <>
+          {ex.category !== "cardio" && (
+            <ProgressionCard
+              result={prog}
+              setting={setting}
+              onSave={async (patch) => {
+                await saveSetting(id, patch);
+                setSetting((s) => ({ exercise_id: id, weight_increment: 1.25, rep_min: null, rep_max: null, ...(s ?? {}), ...patch }));
+                setProgKey((k) => k + 1);
+              }}
+            />
+          )}
           <section className="card p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold">Beräknat 1RM</h2>
@@ -237,4 +262,87 @@ function setText(s: WorkoutSet, ex: Exercise) {
   const load = ex.is_bodyweight ? (s.extra_weight ? `+${num(s.extra_weight)}` : "BW") : num(effectiveLoad(s));
   const rpe = s.rpe != null ? ` @${num(s.rpe)}` : s.rir != null ? ` RIR${num(s.rir)}` : "";
   return `${load}×${s.reps ?? "–"}${rpe}`;
+}
+
+function ProgressionCard({
+  result,
+  setting,
+  onSave,
+}: {
+  result: PResult | null;
+  setting: ExerciseSetting | null;
+  onSave: (patch: Partial<Omit<ExerciseSetting, "exercise_id">>) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [min, setMin] = useState("");
+  const [max, setMax] = useState("");
+  const [inc, setInc] = useState("");
+
+  function open() {
+    setMin(setting?.rep_min ? String(setting.rep_min) : "");
+    setMax(setting?.rep_max ? String(setting.rep_max) : "");
+    setInc(String(setting?.weight_increment ?? 1.25).replace(".", ","));
+    setEditing(true);
+  }
+
+  const range = setting?.rep_max ? `${setting.rep_min ?? setting.rep_max}–${setting.rep_max} reps` : "Inget rep-intervall";
+  return (
+    <section className="card p-4">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 className="font-semibold">Progression</h2>
+        {result && result.status !== "new" && (
+          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${STATUS_STYLE[result.status]}`}>
+            <StatusIcon status={result.status} />
+            {result.label}
+          </span>
+        )}
+      </div>
+      <p className="text-sm text-ink-2">{result?.reason ?? "Laddar…"}</p>
+      {!editing ? (
+        <button onClick={open} className="mt-3 flex w-full items-center justify-between rounded-xl bg-surface-2 px-3 py-2.5 text-sm">
+          <span className="text-ink-2">
+            {range} · steg {num(Number(setting?.weight_increment ?? 1.25), 2)} kg
+          </span>
+          <span className="text-accent">Ändra</span>
+        </button>
+      ) : (
+        <div className="mt-3 space-y-3 rounded-xl bg-surface-2 p-3">
+          <div className="grid grid-cols-3 gap-2">
+            <label>
+              <span className="label text-[10px]">Min reps</span>
+              <input inputMode="numeric" className="input h-9 px-2 text-center" value={min} onChange={(e) => setMin(e.target.value)} />
+            </label>
+            <label>
+              <span className="label text-[10px]">Max reps</span>
+              <input inputMode="numeric" className="input h-9 px-2 text-center" value={max} onChange={(e) => setMax(e.target.value)} />
+            </label>
+            <label>
+              <span className="label text-[10px]">Viktsteg (kg)</span>
+              <input inputMode="decimal" className="input h-9 px-2 text-center" value={inc} onChange={(e) => setInc(e.target.value)} />
+            </label>
+          </div>
+          <p className="text-xs text-ink-3">Utan rep-intervall används mallens mål, annars bara regeln “samma vikt 3 pass och reps ökar”.</p>
+          <div className="flex gap-2">
+            <button className="btn-ghost flex-1 py-2" onClick={() => setEditing(false)}>Avbryt</button>
+            <button
+              className="btn-primary flex-1 py-2"
+              onClick={async () => {
+                const a = parseNum(min);
+                const b = parseNum(max);
+                const i = parseNum(inc);
+                await onSave({
+                  rep_min: a ? Math.round(Math.min(a, b ?? a)) : null,
+                  rep_max: b ? Math.round(Math.max(b, a ?? b)) : a ? Math.round(a) : null,
+                  weight_increment: i && i > 0 ? i : 1.25,
+                });
+                setEditing(false);
+              }}
+            >
+              Spara
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }

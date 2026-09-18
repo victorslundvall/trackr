@@ -5,7 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Play, Plus } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
-import { activeWorkout, startWorkout } from "@/lib/data";
+import { activeWorkout, loadExercises, startWorkout } from "@/lib/data";
+import { loadProgression } from "@/lib/progress-data";
+import type { PResult } from "@/lib/progression";
+import { STATUS_STYLE, StatusIcon } from "@/components/ProgressBadge";
 import { dateLabel, duration, mmss } from "@/lib/format";
 import type { Template, Workout } from "@/lib/types";
 
@@ -20,6 +23,7 @@ export default function Home() {
   const [week, setWeek] = useState<{ workouts: number; sets: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [prog, setProg] = useState<{ name: string; id: string; r: PResult }[] | null>(null);
 
   useEffect(() => {
     activeWorkout().then(setActive);
@@ -33,6 +37,11 @@ export default function Home() {
     sb.rpc("weekly_summary", { p_weeks: 1 }).then(({ data }) => {
       const r = (data ?? [])[0] as { workouts: number; sets: number } | undefined;
       setWeek(r ?? { workouts: 0, sets: 0 });
+    });
+    const since = new Date(Date.now() - 30 * 864e5).toISOString();
+    Promise.all([loadProgression({ since }), loadExercises()]).then(([p, exs]) => {
+      const m = new Map(exs.map((e) => [e.id, e.name]));
+      setProg([...p.entries()].filter(([id]) => m.has(id)).map(([id, r]) => ({ id, name: m.get(id)!, r })));
     });
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
@@ -79,6 +88,8 @@ export default function Home() {
           <Plus size={20} /> Starta tomt pass
         </button>
       )}
+
+      {prog && prog.length > 0 && <ProgressCard items={prog} />}
 
       <section>
         <div className="mb-2 flex items-center justify-between">
@@ -131,5 +142,50 @@ export default function Home() {
         </ul>
       </section>
     </main>
+  );
+}
+
+function ProgressCard({ items }: { items: { name: string; id: string; r: PResult }[] }) {
+  const inc = items.filter((i) => i.r.status === "increase");
+  const stalled = items.filter((i) => i.r.status === "stalled");
+  const prog = items.filter((i) => i.r.status === "progressing");
+  const show = [...inc.slice(0, 3), ...stalled.slice(0, Math.max(0, 4 - Math.min(inc.length, 3)))].slice(0, 5);
+  return (
+    <section>
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="font-semibold">Progression</h2>
+        <Link href="/progress" className="text-sm text-ink-2">Alla</Link>
+      </div>
+      <Link href="/progress" className="card block p-4 hover:border-ink-3">
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <Count n={inc.length} l="redo att höja" status="increase" />
+          <Count n={prog.length} l="går framåt" status="progressing" />
+          <Count n={stalled.length} l="står still" status="stalled" />
+        </div>
+        {show.length > 0 && (
+          <ul className="mt-3 space-y-1.5 border-t border-line pt-3">
+            {show.map((i) => (
+              <li key={i.id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="truncate">{i.name}</span>
+                <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${STATUS_STYLE[i.r.status]}`}>
+                  <StatusIcon status={i.r.status} />
+                  {i.r.label}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Link>
+    </section>
+  );
+}
+
+function Count({ n, l, status }: { n: number; l: string; status: string }) {
+  const color = status === "increase" ? "text-accent" : status === "stalled" ? "text-warm" : "text-sky-300";
+  return (
+    <div>
+      <div className={`text-2xl font-bold tabular-nums ${n ? color : "text-ink-3"}`}>{n}</div>
+      <div className="text-xs text-ink-3">{l}</div>
+    </div>
   );
 }

@@ -10,6 +10,9 @@ import { lastSets, latestBodyweight, loadExercises } from "@/lib/data";
 import { SET_TYPES, dateLabel, duration, e1rm, effectiveLoad, mmss, num, parseNum, timeLabel } from "@/lib/format";
 import ExercisePicker from "@/components/ExercisePicker";
 import RestTimer from "@/components/RestTimer";
+import ProgressBadge from "@/components/ProgressBadge";
+import { loadProgression } from "@/lib/progress-data";
+import { parseRepRange, type PResult } from "@/lib/progression";
 
 type Block = { we: WorkoutExercise; ex: Exercise; sets: WorkoutSet[]; prev: WorkoutSet[] };
 
@@ -31,6 +34,8 @@ export default function WorkoutPage() {
   const [rest, setRest] = useState<{ endsAt: number; total: number } | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [progress, setProgress] = useState<Map<string, PResult>>(new Map());
+  const [targets, setTargets] = useState<Map<string, { sets: number; reps: string | null; rpe: number | null }>>(new Map());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   // ---------- load ----------
@@ -55,6 +60,17 @@ export default function WorkoutPage() {
         prev: await lastSets(we.exercise_id, id),
       })),
     );
+    if (w.template_id) {
+      const { data: te } = await sb.from("template_exercises").select("exercise_id,target_sets,target_reps,target_rpe").eq("template_id", w.template_id);
+      setTargets(
+        new Map(
+          ((te ?? []) as { exercise_id: string; target_sets: number; target_reps: string | null; target_rpe: number | null }[]).map((t) => [
+            t.exercise_id,
+            { sets: t.target_sets, reps: t.target_reps, rpe: t.target_rpe },
+          ]),
+        ),
+      );
+    }
     setWorkout(w);
     setBlocks(bl.filter((b) => b.ex));
     setBodyweight(bw);
@@ -64,6 +80,32 @@ export default function WorkoutPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // progression badges – recomputed when the set of exercises changes
+  const exKey = blocks.map((b) => b.ex.id).sort().join(",");
+  useEffect(() => {
+    if (!exKey) return;
+    const overrides = new Map<string, { min: number; max: number }>();
+    targets.forEach((t, exId) => {
+      const r = parseRepRange(t.reps);
+      if (r) overrides.set(exId, r);
+    });
+    loadProgression({ exerciseIds: exKey.split(","), excludeWorkout: id, overrides }).then(setProgress);
+  }, [exKey, id, targets]);
+
+  function applySuggestion(b: Block) {
+    const sug = progress.get(b.ex.id)?.suggestion;
+    if (!sug) return;
+    b.sets
+      .filter((s) => !s.completed_at && s.set_type !== "warmup")
+      .forEach((s) =>
+        editSet(
+          s.id,
+          b.ex.is_bodyweight ? { extra_weight: sug.extra ?? null, bodyweight: s.bodyweight ?? bodyweight } : { weight: sug.load },
+          true,
+        ),
+      );
+  }
 
   useEffect(() => {
     if (!workout || workout.ended_at) return;
@@ -229,9 +271,10 @@ export default function WorkoutPage() {
         if (rows.length) await sb.from("template_exercises").insert(rows);
       }
     }
-    if (!workout?.ended_at) await sb.from("workouts").update({ ended_at: new Date().toISOString() }).eq("id", id);
-    router.push("/");
-    router.refresh();
+    if (!workout?.ended_at) {
+      await sb.from("workouts").update({ ended_at: new Date().toISOString() }).eq("id", id);
+      router.push(`/workout/${id}/summary`);
+    } else router.push("/history");
   }
 
   async function discard() {
@@ -300,6 +343,9 @@ export default function WorkoutPage() {
               setPicker({ replace: b.we.id });
             }}
             onNotes={(n) => saveNotes(b.we.id, n)}
+            progress={progress.get(b.ex.id)}
+            target={targets.get(b.ex.id)}
+            onApply={() => applySuggestion(b)}
           />
         ))}
       </div>
@@ -352,6 +398,9 @@ function ExerciseBlock(props: {
   onRemove: () => void;
   onReplace: () => void;
   onNotes: (n: string) => void;
+  progress?: PResult;
+  target?: { sets: number; reps: string | null; rpe: number | null };
+  onApply: () => void;
 }) {
   const { b } = props;
   const cardio = isCardio(b.ex);
@@ -371,7 +420,16 @@ function ExerciseBlock(props: {
           <Link href={`/exercises/${b.ex.id}`} className="font-semibold text-accent hover:underline">
             {b.ex.name}
           </Link>
-          {bestPrev && <div className="text-xs text-ink-3">Förra: e1RM {num(bestPrev)} kg</div>}
+          <div className="text-xs text-ink-3">
+            {props.target && (
+              <span className="mr-2 font-medium text-ink-2">
+                Mål {props.target.sets} × {props.target.reps ?? "–"}
+                {props.target.rpe ? ` @${num(props.target.rpe)}` : ""}
+              </span>
+            )}
+            {bestPrev && <>Förra: e1RM {num(bestPrev)} kg</>}
+          </div>
+          <ProgressBadge result={props.progress} onApply={props.onApply} />
         </div>
         <div className="relative">
           <button className="rounded-lg p-1.5 text-ink-2 hover:bg-surface-2" onClick={props.onMenu} aria-label="Meny">

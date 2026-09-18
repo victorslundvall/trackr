@@ -26,6 +26,13 @@ npm run dev
 - **Kroppsmått.**
 - **Import från StrengthLog** (CSV) – kan köras om, redan importerade pass hoppas över. Kroppsvikt från kroppsviktsövningar blir viktkurva.
 
+## Progression (regelmotor, `src/lib/progression.ts`)
+
+- **Höj** när alla set på toppvikten når toppen av rep-intervallet (från övningens inställning eller mallens mål), eller när samma vikt körts 3 pass i rad och reps ökat.
+- **Stagnerat** efter 3 pass utan fler reps eller mer vikt.
+- Viktsteg 1,25 kg som standard – ändras per övning under Övning → Statistik → Progression.
+- Syns som badge i passet, på Hem, på /progress och i summeringen efter passet (med PR).
+
 ## Struktur
 
 ```
@@ -42,5 +49,4 @@ Importera repot i Vercel, lägg till `NEXT_PUBLIC_SUPABASE_URL` och `NEXT_PUBLIC
 
 ## Nästa steg
 
-- Program med progression (block/veckor, %-av-1RM, RPE-baserat)
-- AI: föreslå dagens vikter, generera/justera program, coachchatt
+- AI: importera program (PDF/bild/kalkylark/text), coachchatt, stagnationsanalys, justera dagens pass

@@ -6,6 +6,8 @@ Migreringarna finns i projektet under *Database → Migrations*:
 1. `init_schema` – tabeller (`exercises`, `workouts`, `workout_exercises`, `sets`, `templates`, `template_exercises`, `body_metrics`), index och RLS (varje användare ser bara sina egna rader; globala övningar med `user_id = null` är läsbara för alla inloggade).
 2. `stats_functions` – `exercise_e1rm_series`, `exercise_rep_prs`, `weekly_muscle_sets`, `weekly_summary`, `last_sets`, `exercise_usage` (alla `security invoker`, så RLS gäller).
 3. `we_exercise_fk_index` – index för FK.
+4. `progression` – tabellen `exercise_settings` (viktsteg + rep-intervall per övning) och RPC:erna `progression_sessions` (senaste passen per övning) och `workout_prs` (rekord i ett pass).
+5. `workout_prs_rep_semantics` – rep-PR = tyngre än någonsin för minst lika många reps.
 
 Övningsbiblioteket (753 övningar, stretching exkluderat) är seedat från
 [free-exercise-db](https://github.com/yuhonas/free-exercise-db) (public domain). Bilder laddas från GitHub.
