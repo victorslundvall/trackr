@@ -90,7 +90,7 @@ export async function POST(req: Request) {
         const tool = final.content.find((c) => c.type === "tool_use" && c.name === "propose_program");
         let draft: ProgramDraft | null = null;
         if (tool && tool.type === "tool_use") {
-          const d = normalizeDraft(tool.input as ProgramDraft);
+          const d = normalizeDraft(tool.input);
           if (final.stop_reason !== "max_tokens" && isValidDraft(d)) draft = d;
           else send({ t: "error", d: "Programmet blev inte komplett (svaret klipptes). Skriv t.ex. “bygg programmet igen” så gör coachen ett nytt försök." });
         } else if (final.stop_reason === "max_tokens") {
