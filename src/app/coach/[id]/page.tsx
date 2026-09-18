@@ -27,11 +27,14 @@ export default function CoachChat() {
   const started = useRef(false);
 
   useEffect(() => {
+    // Guard against React StrictMode's double effect run: a stale load must not wipe an in-flight reply.
+    let cancelled = false;
     const sb = supabase();
     Promise.all([
       sb.from("coach_chats").select("id,title,profile,program_id").eq("id", id).single(),
       sb.from("coach_messages").select("id,role,content,program_draft").eq("chat_id", id).order("created_at"),
     ]).then(([{ data: c }, { data: m }]) => {
+      if (cancelled) return;
       if (!c) return router.replace("/coach");
       setChat(c);
       const list = (m ?? []) as Msg[];
@@ -43,6 +46,9 @@ export default function CoachChat() {
         send(intro);
       }
     });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -56,7 +62,12 @@ export default function CoachChat() {
     setInput("");
     setStreaming(true);
     setMsgs((m) => [...m, { role: "user", content: text.trim(), program_draft: null }, { role: "assistant", content: "", program_draft: null }]);
-    const patchLast = (f: (m: Msg) => Msg) => setMsgs((m) => [...m.slice(0, -1), f(m[m.length - 1])]);
+    const patchLast = (f: (m: Msg) => Msg) =>
+      setMsgs((m) => {
+        const last = m[m.length - 1];
+        if (!last || last.role !== "assistant") return [...m, f({ role: "assistant", content: "", program_draft: null })];
+        return [...m.slice(0, -1), f(last)];
+      });
     try {
       for await (const ev of coachStream(id, text)) {
         if (ev.t === "text") {
