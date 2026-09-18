@@ -33,6 +33,16 @@ npm run dev
 - Viktsteg 1,25 kg som standard – ändras per övning under Övning → Statistik → Progression.
 - Syns som badge i passet, på Hem, på /progress och i summeringen efter passet (med PR).
 
+## AI-coach (`/coach`)
+
+- Snabbformulär (dagar, passlängd, mål, erfarenhet, utrustning, fokusmuskler, skador, deload, historik) → chatt där coachen ställer följdfrågor med klickbara svar.
+- Coachen (Claude Sonnet 5 via `/api/coach/chat`) bygger programmet med verktyget `propose_program`; kunskapsbasen ligger i `src/lib/coach/knowledge.ts` och kan justeras fritt.
+- Med historik påslagen får coachen en sammanfattning av dina övningar, senaste toppset, stagnation och veckovolym per muskel.
+- Programmet visas i chatten (dagar, set × reps, RIR, motivering, veckoplan, volym per muskel). Spara → program + en mall per dag; övningar matchas mot dina egna först. Ändringar i chatten → "Uppdatera sparat program".
+- Aktivt program: Hem visar veckan och nästa pass i ordning.
+
+Kräver `ANTHROPIC_API_KEY` i `.env.local` (och i Vercel). Valfritt: `COACH_MODEL` för att byta modell.
+
 ## Struktur
 
 ```
@@ -49,4 +59,4 @@ Importera repot i Vercel, lägg till `NEXT_PUBLIC_SUPABASE_URL` och `NEXT_PUBLIC
 
 ## Nästa steg
 
-- AI: importera program (PDF/bild/kalkylark/text), coachchatt, stagnationsanalys, justera dagens pass
+- AI: importera program (PDF/bild/kalkylark/text), fri coachchatt, stagnationsanalys, justera dagens pass

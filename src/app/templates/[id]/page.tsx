@@ -105,7 +105,11 @@ export default function TemplateEditor() {
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
                 <div className="font-semibold">{x.ex.name}</div>
-                <div className="text-xs text-ink-3">{x.ex.primary_muscles.map(muscleLabel).join(", ")}</div>
+                <div className="text-xs text-ink-3">
+                  {x.ex.primary_muscles.map(muscleLabel).join(", ")}
+                  {x.target_rir ? ` · ${x.target_rir} RIR` : ""}
+                </div>
+                {x.rationale && <div className="mt-0.5 text-xs italic text-ink-3">{x.rationale}</div>}
               </div>
               <button className="rounded-lg p-1.5 text-ink-3 hover:bg-surface-2" onClick={() => move(i, -1)} aria-label="Upp"><ArrowUp size={16} /></button>
               <button className="rounded-lg p-1.5 text-ink-3 hover:bg-surface-2" onClick={() => move(i, 1)} aria-label="Ner"><ArrowDown size={16} /></button>

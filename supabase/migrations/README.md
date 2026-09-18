@@ -8,6 +8,7 @@ Migreringarna finns i projektet under *Database → Migrations*:
 3. `we_exercise_fk_index` – index för FK.
 4. `progression` – tabellen `exercise_settings` (viktsteg + rep-intervall per övning) och RPC:erna `progression_sessions` (senaste passen per övning) och `workout_prs` (rekord i ett pass).
 5. `workout_prs_rep_semantics` – rep-PR = tyngre än någonsin för minst lika många reps.
+6. `coach_programs` – `programs`, `coach_chats`, `coach_messages`; `templates.program_id/day_index`; `template_exercises.target_rir/target_weight/rationale`; RPC `match_exercises` (trigram-matchning) och `program_progress` (vecka + nästa pass).
 
 Övningsbiblioteket (753 övningar, stretching exkluderat) är seedat från
 [free-exercise-db](https://github.com/yuhonas/free-exercise-db) (public domain). Bilder laddas från GitHub.

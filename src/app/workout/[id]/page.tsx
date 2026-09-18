@@ -15,6 +15,7 @@ import { loadProgression } from "@/lib/progress-data";
 import { parseRepRange, type PResult } from "@/lib/progression";
 
 type Block = { we: WorkoutExercise; ex: Exercise; sets: WorkoutSet[]; prev: WorkoutSet[] };
+type Target = { sets: number; reps: string | null; rpe: number | null; rir: string | null; weight: number | null; rationale: string | null };
 
 const DEFAULT_REST = 120;
 const isCardio = (ex: Exercise) => ex.category === "cardio";
@@ -35,7 +36,7 @@ export default function WorkoutPage() {
   const [finishing, setFinishing] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [progress, setProgress] = useState<Map<string, PResult>>(new Map());
-  const [targets, setTargets] = useState<Map<string, { sets: number; reps: string | null; rpe: number | null }>>(new Map());
+  const [targets, setTargets] = useState<Map<string, Target>>(new Map());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   // ---------- load ----------
@@ -61,12 +62,15 @@ export default function WorkoutPage() {
       })),
     );
     if (w.template_id) {
-      const { data: te } = await sb.from("template_exercises").select("exercise_id,target_sets,target_reps,target_rpe").eq("template_id", w.template_id);
+      const { data: te } = await sb
+        .from("template_exercises")
+        .select("exercise_id,target_sets,target_reps,target_rpe,target_rir,target_weight,rationale")
+        .eq("template_id", w.template_id);
       setTargets(
         new Map(
-          ((te ?? []) as { exercise_id: string; target_sets: number; target_reps: string | null; target_rpe: number | null }[]).map((t) => [
+          ((te ?? []) as { exercise_id: string; target_sets: number; target_reps: string | null; target_rpe: number | null; target_rir: string | null; target_weight: number | null; rationale: string | null }[]).map((t) => [
             t.exercise_id,
-            { sets: t.target_sets, reps: t.target_reps, rpe: t.target_rpe },
+            { sets: t.target_sets, reps: t.target_reps, rpe: t.target_rpe, rir: t.target_rir, weight: t.target_weight, rationale: t.rationale },
           ]),
         ),
       );
@@ -399,7 +403,7 @@ function ExerciseBlock(props: {
   onReplace: () => void;
   onNotes: (n: string) => void;
   progress?: PResult;
-  target?: { sets: number; reps: string | null; rpe: number | null };
+  target?: Target;
   onApply: () => void;
 }) {
   const { b } = props;
@@ -425,10 +429,13 @@ function ExerciseBlock(props: {
               <span className="mr-2 font-medium text-ink-2">
                 Mål {props.target.sets} × {props.target.reps ?? "–"}
                 {props.target.rpe ? ` @${num(props.target.rpe)}` : ""}
+                {props.target.rir ? ` · ${props.target.rir} RIR` : ""}
+                {props.target.weight && !b.prev.length ? ` · ~${num(props.target.weight)} kg` : ""}
               </span>
             )}
             {bestPrev && <>Förra: e1RM {num(bestPrev)} kg</>}
           </div>
+          {props.target?.rationale && <div className="mt-0.5 text-xs italic text-ink-3">{props.target.rationale}</div>}
           <ProgressBadge result={props.progress} onApply={props.onApply} />
         </div>
         <div className="relative">
@@ -502,7 +509,7 @@ function ExerciseBlock(props: {
                 </span>
                 <NumInput
                   value={cardio ? s.distance_km : bw ? s.extra_weight : s.weight}
-                  placeholder={cardio ? ph?.distance_km : bw ? ph?.extra_weight ?? 0 : ph?.weight}
+                  placeholder={cardio ? ph?.distance_km : bw ? ph?.extra_weight ?? 0 : ph?.weight ?? props.target?.weight}
                   onChange={(v) =>
                     props.onEdit(s.id, cardio ? { distance_km: v } : bw ? { extra_weight: v, bodyweight: s.bodyweight ?? props.bodyweight } : { weight: v })
                   }

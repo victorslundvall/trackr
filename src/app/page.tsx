@@ -11,6 +11,7 @@ import type { PResult } from "@/lib/progression";
 import { STATUS_STYLE, StatusIcon } from "@/components/ProgressBadge";
 import { dateLabel, duration, mmss } from "@/lib/format";
 import type { Template, Workout } from "@/lib/types";
+import type { ProgramProgress, WeekPlan } from "@/lib/coach/program";
 
 type Recent = Workout & { workout_exercises: { sets: { count: number }[] }[] };
 
@@ -24,10 +25,30 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [prog, setProg] = useState<{ name: string; id: string; r: PResult }[] | null>(null);
+  const [program, setProgram] = useState<{
+    id: string;
+    name: string;
+    week_plan: WeekPlan[];
+    progress: ProgramProgress | null;
+    templates: { id: string; name: string; day_index: number }[];
+  } | null>(null);
 
   useEffect(() => {
     activeWorkout().then(setActive);
-    sb.from("templates").select("*, template_exercises(count)").order("position").order("created_at").then(({ data }) => setTemplates(data ?? []));
+    sb.from("templates").select("*, template_exercises(count)").is("program_id", null).order("position").order("created_at").then(({ data }) => setTemplates(data ?? []));
+    sb.from("programs")
+      .select("id,name,week_plan")
+      .eq("active", true)
+      .maybeSingle()
+      .then(async ({ data: p }) => {
+        if (!p) return setProgram(null);
+        const [{ data: pr }, { data: tpls }] = await Promise.all([
+          sb.rpc("program_progress", { p_program: p.id }),
+          sb.from("templates").select("id,name,day_index").eq("program_id", p.id).order("day_index"),
+        ]);
+        const progress = ((pr ?? [])[0] ?? null) as ProgramProgress | null;
+        setProgram({ ...p, progress, templates: tpls ?? [] });
+      });
     sb.from("workouts")
       .select("*, workout_exercises(sets(count))")
       .not("ended_at", "is", null)
@@ -88,6 +109,28 @@ export default function Home() {
           <Plus size={20} /> Starta tomt pass
         </button>
       )}
+
+      {program && !active && (() => {
+        const next = program.templates.find((t) => t.id === program.progress?.next_template);
+        const wk = program.week_plan?.find((w) => w.week === program.progress?.week);
+        return (
+          <section className="card p-4">
+            <div className="flex items-center justify-between gap-2">
+              <Link href={`/programs/${program.id}`} className="min-w-0 truncate text-sm text-ink-2 hover:underline">{program.name}</Link>
+              {program.progress && (
+                <span className="shrink-0 text-xs text-ink-3">
+                  Vecka {program.progress.week}{program.progress.weeks ? `/${program.progress.weeks}` : ""}{wk ? ` · ${wk.deload ? "deload" : `${wk.rir} RIR`}` : ""}
+                </span>
+              )}
+            </div>
+            {next && (
+              <button className="btn-primary mt-3 w-full py-3.5" onClick={() => start(next.id)} disabled={busy}>
+                <Play size={17} fill="currentColor" /> Starta {next.name}
+              </button>
+            )}
+          </section>
+        );
+      })()}
 
       {prog && prog.length > 0 && <ProgressCard items={prog} />}
 

@@ -74,6 +74,9 @@ export interface TemplateExercise {
   target_rpe: number | null;
   rest_seconds: number | null;
   notes: string | null;
+  target_rir?: string | null;
+  target_weight?: number | null;
+  rationale?: string | null;
 }
 
 export interface BodyMetric {
