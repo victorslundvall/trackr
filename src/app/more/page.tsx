@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Calculator, ChevronRight, ClipboardList, FileUp, LogOut, Ruler, TrendingUp, Upload } from "lucide-react";
+import { Calculator, Camera, ChevronRight, ClipboardList, Download, FileUp, Loader2, LogOut, Ruler, TrendingUp, Upload } from "lucide-react";
+import { exportCsv } from "@/lib/export";
 import { supabase } from "@/lib/supabase/client";
 
 const links = [
-  { href: "/tools", label: "Verktyg (1RM, kalorier)", icon: Calculator },
+  { href: "/tools", label: "Verktyg (1RM, skivor, kalorier)", icon: Calculator },
+  { href: "/photos", label: "Progressbilder", icon: Camera },
   { href: "/progress", label: "Progression", icon: TrendingUp },
   { href: "/coach/import", label: "Importera program (PDF, bild, kalkylark)", icon: FileUp },
   { href: "/templates", label: "Mallar", icon: ClipboardList },
@@ -16,6 +18,8 @@ const links = [
 
 export default function MorePage() {
   const [email, setEmail] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<string | null>(null);
+  const [exported, setExported] = useState<string | null>(null);
   useEffect(() => {
     supabase()
       .auth.getUser()
@@ -41,13 +45,34 @@ export default function MorePage() {
           </li>
         ))}
       </ul>
+      <button
+        className="card interactive flex w-full items-center gap-3 px-4 py-3.5 text-left"
+        disabled={!!exporting}
+        onClick={async () => {
+          setExported(null);
+          try {
+            const r = await exportCsv(setExporting);
+            setExported(`${r.workouts} pass och ${r.sets} set exporterade.`);
+          } catch (e) {
+            setExported(`Export misslyckades: ${(e as Error).message}`);
+          } finally {
+            setExporting(null);
+          }
+        }}
+      >
+        {exporting ? <Loader2 size={18} className="animate-spin text-accent" /> : <Download size={18} className="text-ink-2" />}
+        <div className="flex-1">
+          <div>Exportera all historik (CSV)</div>
+          <div className="text-xs text-ink-3">{exporting ?? exported ?? "StrengthLog-kompatibelt format"}</div>
+        </div>
+      </button>
       <div className="card flex items-center gap-3 px-4 py-3.5">
         <div className="flex-1 text-sm text-ink-2">{email}</div>
         <button className="btn-ghost" onClick={logout}>
           <LogOut size={16} /> Logga ut
         </button>
       </div>
-      <p className="text-center text-xs text-ink-3">Trackr v0.1 · Övningsdata från free-exercise-db (public domain)</p>
+      <p className="text-center text-xs text-ink-3">Trackr v0.6 · Övningsdata från free-exercise-db (public domain)</p>
     </main>
   );
 }

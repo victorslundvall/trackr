@@ -5,6 +5,7 @@ import "./globals.css";
 import Nav from "@/components/Nav";
 import RegisterSW from "@/components/RegisterSW";
 import { MotionProvider } from "@/components/motion";
+import SyncStatus from "@/components/SyncStatus";
 
 export const metadata: Metadata = {
   title: "Trackr",
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MotionProvider>
           <div className="mx-auto max-w-2xl px-4 pb-28 pt-5 md:pt-8">{children}</div>
           <Nav />
+          <SyncStatus />
         </MotionProvider>
         <RegisterSW />
       </body>

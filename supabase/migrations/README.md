@@ -28,3 +28,4 @@ body_metrics
 Senare migreringar:
 7. `coach_philosophy` – `coach_philosophy` (principer per användare) och `coach_philosophy_suggestions` (förslag från den kvartalsvisa forskningsuppgiften).
 8. `stats_tools_ai` – `user_settings` (nivå, fokusmuskler), `workouts.ai_comment`, `template_exercises.superset_group`, `block_reports`; RPC `daily_sets`, `session_bests`, `pr_timeline`, `block_stats`.
+9. `readiness_weekly_notes_photos` – `readiness` (dagsform + coachens plan), `weekly_reports`, `exercise_notes`, `progress_photos` och privat Storage-bucket `progress-photos` (policys: bara egen mapp `<uid>/…`).

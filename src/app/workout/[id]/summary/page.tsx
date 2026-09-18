@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { motion } from "motion/react";
 import { Sparkles, Trophy } from "lucide-react";
+import { useOutbox } from "@/lib/offline";
 import { CountUp, PageSkeleton, TypingDots, easeOut, spring } from "@/components/motion";
 import { supabase } from "@/lib/supabase/client";
 import { loadExercises } from "@/lib/data";
@@ -17,7 +18,10 @@ import { STATUS_STYLE, StatusIcon } from "@/components/ProgressBadge";
 type PR = { exercise_id: string; kind: "e1rm" | "reps"; reps: number | null; load: number; previous: number | null };
 
 export default function WorkoutSummary() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id: string }>();
+  const [id] = useState(() => (typeof window !== "undefined" ? window.location.pathname.split("/")[2] : params.id) || params.id);
+  const outbox = useOutbox();
+  const ready = outbox.online && outbox.pending === 0;
   const [workout, setWorkout] = useState<Workout | null>(null);
   const [stats, setStats] = useState<{ sets: number; volume: number; exercises: string[] }>({ sets: 0, volume: 0, exercises: [] });
   const [prs, setPrs] = useState<PR[]>([]);
@@ -27,6 +31,7 @@ export default function WorkoutSummary() {
   const [progLoaded, setProgLoaded] = useState(false);
 
   useEffect(() => {
+    if (!ready || workout) return;
     const sb = supabase();
     (async () => {
       const [{ data: w }, { data: wes }, exs, { data: pr }] = await Promise.all([
@@ -58,8 +63,24 @@ export default function WorkoutSummary() {
           .catch(() => setComment(null));
       }
     })();
-  }, [id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, ready]);
 
+  if (!workout && !ready)
+    return (
+      <div className="card mt-10 flex flex-col items-center p-6 text-center">
+        <div className="text-accent">
+          <TypingDots />
+        </div>
+        <div className="mt-3 font-semibold">{outbox.online ? "Synkar passet…" : "Passet är sparat på telefonen"}</div>
+        <p className="mt-1 text-sm text-ink-3">
+          {outbox.online ? "Det tar bara ett ögonblick." : "Det synkas automatiskt när du får täckning. Sammanfattningen visas då."}
+        </p>
+        <Link href="/" className="btn-ghost mt-4">
+          Till Hem
+        </Link>
+      </div>
+    );
   if (!workout) return <PageSkeleton rows={3} />;
 
   const e1 = prs.filter((p) => p.kind === "e1rm");

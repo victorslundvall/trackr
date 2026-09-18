@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ChevronLeft, Pencil } from "lucide-react";
+import { ChevronLeft, Pencil, Pin } from "lucide-react";
+import PinnedNote from "@/components/PinnedNote";
+import { loadNotes, saveNote } from "@/lib/notes";
 import { supabase } from "@/lib/supabase/client";
 import { loadExercises } from "@/lib/data";
 import { EQUIPMENT, IMAGE_BASE, dateLabel, e1rm, effectiveLoad, kg, muscleLabel, num } from "@/lib/format";
@@ -24,7 +26,12 @@ const RANGES = [
 ] as const;
 
 export default function ExerciseDetail() {
+  const [note, setNote] = useState("");
+  const [noteEditing, setNoteEditing] = useState(false);
   const { id } = useParams<{ id: string }>();
+  useEffect(() => {
+    loadNotes([id]).then((m) => setNote(m.get(id) ?? ""));
+  }, [id]);
   const sb = supabase();
   const [ex, setEx] = useState<Exercise | null>(null);
   const [series, setSeries] = useState<{ day: string; e1rm: number; weight: number; reps: number }[]>([]);
@@ -101,6 +108,15 @@ export default function ExerciseDetail() {
         {ex.equipment && <span className="chip">{EQUIPMENT[ex.equipment] ?? ex.equipment}</span>}
         {ex.user_id && ex.primary_muscles.length === 0 && (
           <button className="chip border-warm text-warm" onClick={() => setEditing(true)}>Ange muskler för statistik</button>
+        )}
+      </div>
+
+      <div>
+        <PinnedNote note={note} onSave={(n) => { saveNote(id, n); setNote(n.trim()); }} editing={noteEditing} onEditingChange={setNoteEditing} />
+        {!note && !noteEditing && (
+          <button className="chip gap-1" onClick={() => setNoteEditing(true)}>
+            <Pin size={12} /> Lägg till fast notering
+          </button>
         )}
       </div>
 

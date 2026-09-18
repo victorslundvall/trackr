@@ -14,6 +14,9 @@ import { MUSCLES } from "@/lib/format";
 import { loadSettings, volumeTarget, type UserSettings } from "@/lib/settings";
 import { MiniMuscleMap, type MuscleState } from "@/components/MuscleMap";
 import { CountUp, spring } from "@/components/motion";
+import ReadinessSheet from "@/components/ReadinessSheet";
+import { enqueue, loadLocal, saveLocal } from "@/lib/offline";
+import type { WeeklyReport } from "@/app/weekly/[week]/page";
 import type { Workout } from "@/lib/types";
 import type { ProgramProgress, WeekPlan } from "@/lib/coach/program";
 
@@ -44,6 +47,8 @@ export default function Home() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [pr, setPr] = useState<Pr | null>(null);
   const [names, setNames] = useState<Map<string, string>>(new Map());
+  const [readyFor, setReadyFor] = useState<{ id: string; name: string } | null>(null);
+  const [weekly, setWeekly] = useState<WeeklyReport | null>(null);
 
   useEffect(() => {
     activeWorkout().then(setActive);
@@ -51,14 +56,21 @@ export default function Home() {
       .select("id,name,days_per_week,week_plan")
       .eq("active", true)
       .maybeSingle()
-      .then(async ({ data: p }) => {
-        if (!p) return setProgram(null);
+      .then(async ({ data: p, error }) => {
+        // offline: show the last known program so a session can still be started
+        if (error) return setProgram(loadLocal<Program>("home-program") ?? null);
+        if (!p) {
+          saveLocal("home-program", null);
+          return setProgram(null);
+        }
         const [{ data: pr }, { data: tpls }] = await Promise.all([
           sb.rpc("program_progress", { p_program: p.id }),
           sb.from("templates").select("id,name,day_index,template_exercises(target_sets)").eq("program_id", p.id).order("day_index"),
         ]);
         const progress = ((pr ?? [])[0] ?? null) as ProgramProgress | null;
-        setProgram({ ...p, progress, templates: (tpls ?? []) as Tpl[] });
+        const full = { ...p, progress, templates: (tpls ?? []) as Tpl[] };
+        setProgram(full);
+        saveLocal("home-program", full);
         // Block finished? Make sure its report exists (created automatically), then show it for a week.
         if (progress && progress.days > 0) {
           const size = progress.days * Math.max(1, progress.weeks ?? 1);
@@ -88,12 +100,28 @@ export default function Home() {
     sb.rpc("weekly_muscle_sets", { p_weeks: 1 }).then(({ data }) => setMuscles(data ?? []));
     sb.rpc("pr_timeline", { p_limit: 1 }).then(({ data }) => setPr(((data ?? []) as Pr[])[0] ?? null));
     loadSettings().then(setSettings);
+    // Weekly coach report: on Sunday evening for this week, Mon–Wed for last week.
+    (async () => {
+      const d = new Date();
+      const dow = (d.getDay() + 6) % 7; // 0 = Monday
+      const week = dow === 6 && d.getHours() >= 17 ? mondayKey(0) : dow <= 2 ? mondayKey(1) : null;
+      if (!week || !navigator.onLine) return;
+      const { data: rep } = await sb.from("weekly_reports").select("*").eq("week", week).maybeSingle();
+      const weekEnd = new Date(`${week}T00:00:00`).getTime() + 7 * 864e5;
+      // generated early (e.g. Sunday before the last session)? refresh once after the week is over
+      const stale = rep && new Date(rep.created_at).getTime() < weekEnd && Date.now() >= weekEnd;
+      if (rep && !stale) return setWeekly(rep as WeeklyReport);
+      const j = await fetch("/api/coach/weekly-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ week, force: !!stale }) })
+        .then((r) => r.json())
+        .catch(() => null);
+      if (j?.report) setWeekly(j.report as WeeklyReport);
+    })();
     const since = new Date(Date.now() - 30 * 864e5).toISOString();
     Promise.all([loadProgression({ since }), loadExercises()]).then(([p, exs]) => {
       const m = new Map(exs.map((e) => [e.id, e.name]));
       setNames(m);
       setProg([...p.entries()].filter(([id]) => m.has(id)).map(([id, r]) => ({ id, name: m.get(id)!, r })));
-    });
+    }).catch(() => {});
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [sb]);
@@ -210,7 +238,7 @@ export default function Home() {
             </div>
           ) : null}
           <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
-            <button className="btn-primary py-3.5" onClick={() => start(next.id)} disabled={busy}>
+            <button className="btn-primary py-3.5" onClick={() => setReadyFor({ id: next.id, name: nextName ?? next.name })} disabled={busy}>
               <Play size={16} fill="currentColor" /> Starta passet
             </button>
             <button className="btn-outline px-4 py-3.5" onClick={() => start()} disabled={busy} aria-label="Starta tomt pass">
@@ -246,6 +274,31 @@ export default function Home() {
             <div className="text-sm text-ink-2">Styrka, volym och coachens förslag inför nästa block</div>
           </div>
           <ChevronRight size={20} className="text-ink-3" />
+        </Link>
+      )}
+
+      {weekly && weekly.stats.workouts > 0 && (
+        <Link href={`/weekly/${weekly.week}`} className="card interactive block p-4">
+          <div className="flex items-center justify-between">
+            <div className="eyebrow flex items-center gap-1.5 text-accent">
+              <Sparkles size={13} /> Veckorapport
+            </div>
+            <ChevronRight size={16} className="text-ink-3" />
+          </div>
+          <div className="mt-1.5 flex gap-4 text-sm">
+            <span>
+              <b className="font-semibold">{weekly.stats.workouts}</b> <span className="text-ink-3">pass</span>
+            </span>
+            <span>
+              <b className="font-semibold">{weekly.stats.sets}</b> <span className="text-ink-3">set</span>
+            </span>
+            {weekly.stats.prs.length > 0 && (
+              <span>
+                <b className="font-semibold text-accent">{weekly.stats.prs.length}</b> <span className="text-ink-3">rekord</span>
+              </span>
+            )}
+          </div>
+          {weekly.ai_summary && <p className="mt-1.5 line-clamp-2 text-sm text-ink-2">{weekly.ai_summary.replace(/\*\*/g, "").split("\n")[0]}</p>}
         </Link>
       )}
 
@@ -309,6 +362,20 @@ export default function Home() {
 
         {prog && prog.length > 0 && <ProgressWidget items={prog} />}
       </div>
+
+      <ReadinessSheet
+        open={!!readyFor}
+        templateId={readyFor?.id ?? null}
+        sessionName={readyFor?.name ?? "passet"}
+        onClose={() => setReadyFor(null)}
+        onStart={async (adjust, meta) => {
+          setBusy(true);
+          const id = await startWorkout(readyFor!.id, adjust);
+          if (meta.readinessId) enqueue({ table: "readiness", kind: "update", match: { id: meta.readinessId }, values: { workout_id: id, applied: !!adjust } });
+          if (meta.plan) saveLocal(`plan:${id}`, meta.plan);
+          router.push(`/workout/${id}`);
+        }}
+      />
 
       {/* ---------- recent ---------- */}
       <section className="pt-2">

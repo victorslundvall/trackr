@@ -1,6 +1,6 @@
 // Trackr service worker – makes the app installable and keeps the app shell usable on a flaky gym connection.
 // Data calls to Supabase and /api are never cached.
-const VERSION = "trackr-v1";
+const VERSION = "trackr-v2";
 const SHELL = ["/offline.html", "/icon-192.png", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
@@ -46,7 +46,21 @@ self.addEventListener("fetch", (e) => {
           }
           return res;
         })
-        .catch(() => caches.match(req).then((hit) => hit || caches.match("/offline.html"))),
+        .catch(async () => {
+          const hit = await caches.match(req);
+          if (hit) return hit;
+          // A workout started offline has never been fetched: serve any cached logger shell –
+          // the page reads the workout id from the address bar and opens its local copy.
+          const kind = /^\/workout\/[^/]+\/summary$/.test(url.pathname) ? "summary" : /^\/workout\/[^/]+$/.test(url.pathname) ? "workout" : null;
+          if (kind) {
+            const cache = await caches.open(VERSION);
+            for (const k of await cache.keys()) {
+              const p = new URL(k.url).pathname;
+              if (kind === "workout" ? /^\/workout\/[^/]+$/.test(p) : /^\/workout\/[^/]+\/summary$/.test(p)) return cache.match(k);
+            }
+          }
+          return caches.match("/offline.html");
+        }),
     );
   }
 });

@@ -51,6 +51,16 @@ Kräver `ANTHROPIC_API_KEY` i `.env.local` (och i Vercel). Valfritt: `COACH_MODE
 - **Supersets:** ⋯ på en övning → "Superset med nästa". Vilotimern startar efter sista övningen i supersetet.
 - **PWA:** installera via Safari → Dela → Lägg till på hemskärmen.
 
+## Offline, dagsform och mer (v0.6)
+
+- **Offline-loggning:** allt i loggningen går via en utkö (`src/lib/offline.ts`) i localStorage med klient-genererade id:n och synkas i ordning när nätet kommer tillbaka. Hela passet sparas också lokalt, så sidan kan laddas om utan täckning (service workern serverar ett cachat "skal"). En pill högst upp visar offline/osynkade ändringar.
+- **Dagsform:** "Starta passet" på Hem frågar sömn, energi, träningsvärk och stress. Coachen (`/api/coach/readiness`) föreslår en plan (set/belastning per övning) som kan användas eller ignoreras. Sparas i `readiness`.
+- **Veckorapport:** skapas automatiskt söndag kväll (eller mån–ons för förra veckan) via `/api/coach/weekly-report`, visas som kort på Hem och på `/weekly/[vecka]`.
+- **Skivkalkylator:** i Verktyg och via skiv-ikonen på skivstångsövningar under passet.
+- **Fasta noteringar per övning:** `exercise_notes`, visas varje gång övningen körs.
+- **Progressbilder:** privat Storage-bucket `progress-photos`, jämförelse med reglage (`/photos`).
+- **CSV-export:** Mer → Exportera, StrengthLog-kompatibelt format.
+
 ## Struktur
 
 ```
@@ -67,4 +77,4 @@ Importera repot i Vercel, lägg till `NEXT_PUBLIC_SUPABASE_URL` och `NEXT_PUBLIC
 
 ## Nästa steg
 
-- AI: importera program (PDF/bild/kalkylark/text), fri coachchatt, stagnationsanalys, justera dagens pass
+- Idéer: uppvärmningsgenerator, röstloggning, styrkelyftsstöd (DOTS, försöksval)

@@ -4,11 +4,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowDown, ArrowUp, Link2, ChevronLeft, MoreHorizontal, Plus, RefreshCw, StickyNote, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Disc3, Link2, ChevronLeft, MoreHorizontal, Pin, Plus, RefreshCw, Sparkles, StickyNote, Trash2, X } from "lucide-react";
+import PinnedNote from "@/components/PinnedNote";
+import PlateCalculator from "@/components/PlateCalculator";
+import { cachedNotes, loadNotes, saveNote } from "@/lib/notes";
+import type { ReadinessPlan } from "@/app/api/coach/readiness/route";
 import { Collapse, PageSkeleton, Sheet, easeOut, haptic, spring } from "@/components/motion";
 import { supabase } from "@/lib/supabase/client";
 import type { Exercise, SetType, Workout, WorkoutExercise, WorkoutSet } from "@/lib/types";
-import { lastSets, latestBodyweight, loadExercises } from "@/lib/data";
+import { emptySet, lastSets, latestBodyweight, loadExercises, type WorkoutSnapshot } from "@/lib/data";
+import { dropLocal, enqueue, flush, hasPending, loadLocal, saveLocal, uuid, withTimeout } from "@/lib/offline";
 import { SET_TYPES, dateLabel, duration, e1rm, effectiveLoad, mmss, num, parseNum, timeLabel } from "@/lib/format";
 import ExercisePicker from "@/components/ExercisePicker";
 import RestTimer from "@/components/RestTimer";
@@ -23,7 +28,9 @@ const DEFAULT_REST = 120;
 const isCardio = (ex: Exercise) => ex.category === "cardio";
 
 export default function WorkoutPage() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id: string }>();
+  // Read the id from the address bar: offline, the service worker may serve another workout's cached shell.
+  const [id] = useState(() => (typeof window !== "undefined" ? window.location.pathname.split("/")[2] : params.id) || params.id);
   const router = useRouter();
   const sb = supabase();
 
@@ -39,17 +46,50 @@ export default function WorkoutPage() {
   const [now, setNow] = useState(() => Date.now());
   const [progress, setProgress] = useState<Map<string, PResult>>(new Map());
   const [targets, setTargets] = useState<Map<string, Target>>(new Map());
+  const [offlineMissing, setOfflineMissing] = useState(false);
+  const [notes, setNotes] = useState<Map<string, string>>(new Map());
+  const [plates, setPlates] = useState<number | null | undefined>(undefined);
+  const [plan, setPlan] = useState<ReadinessPlan | null>(null);
+  useEffect(() => setPlan(loadLocal<ReadinessPlan>(`plan:${id}`)), [id]);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   // ---------- load ----------
+  const applySnapshot = useCallback((snap: WorkoutSnapshot) => {
+    setWorkout(snap.workout);
+    setBlocks(snap.blocks);
+    setTargets(new Map(snap.targets));
+    setBodyweight(snap.bodyweight);
+    setLoading(false);
+  }, []);
+
   const load = useCallback(async () => {
-    const [{ data: w }, { data: wes }, exercises, bw] = await Promise.all([
-      sb.from("workouts").select("*").eq("id", id).single(),
-      sb.from("workout_exercises").select("*").eq("workout_id", id).order("position"),
-      loadExercises(),
-      latestBodyweight(),
-    ]);
-    if (!w) return router.replace("/");
+    const snap = loadLocal<WorkoutSnapshot>(`workout:${id}`);
+    // Unsynced local changes (or no network): the local copy is the truth.
+    if (snap && (hasPending() || !navigator.onLine)) {
+      applySnapshot(snap);
+      flush();
+      return;
+    }
+    const fetched = await withTimeout(
+      Promise.all([
+        sb.from("workouts").select("*").eq("id", id).single(),
+        sb.from("workout_exercises").select("*").eq("workout_id", id).order("position"),
+        loadExercises(),
+        latestBodyweight(),
+      ]),
+      8000,
+      null,
+    );
+    if (!fetched || fetched[0].error?.message?.match(/fetch|network/i)) {
+      if (snap) return applySnapshot(snap);
+      setOfflineMissing(true);
+      return setLoading(false);
+    }
+    const [{ data: w }, { data: wes }, exercises, bw] = fetched;
+    if (!w) {
+      if (snap) return applySnapshot(snap);
+      return router.replace("/");
+    }
     const weIds = (wes ?? []).map((x: WorkoutExercise) => x.id);
     const { data: sets } = weIds.length
       ? await sb.from("sets").select("*").in("workout_exercise_id", weIds).order("position")
@@ -81,11 +121,17 @@ export default function WorkoutPage() {
     setBlocks(bl.filter((b) => b.ex));
     setBodyweight(bw);
     setLoading(false);
-  }, [id, router, sb]);
+  }, [id, router, sb, applySnapshot]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Keep a local copy of the whole session so it survives reloads and dead zones.
+  useEffect(() => {
+    if (loading || !workout) return;
+    saveLocal<WorkoutSnapshot>(`workout:${id}`, { workout, blocks, targets: [...targets.entries()], bodyweight, savedAt: Date.now() });
+  }, [loading, workout, blocks, targets, bodyweight, id]);
 
   // progression badges – recomputed when the set of exercises changes
   const exKey = blocks.map((b) => b.ex.id).sort().join(",");
@@ -96,7 +142,9 @@ export default function WorkoutPage() {
       const r = parseRepRange(t.reps);
       if (r) overrides.set(exId, r);
     });
-    loadProgression({ exerciseIds: exKey.split(","), excludeWorkout: id, overrides }).then(setProgress);
+    loadProgression({ exerciseIds: exKey.split(","), excludeWorkout: id, overrides }).then(setProgress).catch(() => {});
+    setNotes(cachedNotes());
+    loadNotes(exKey.split(",")).then(setNotes);
   }, [exKey, id, targets]);
 
   function applySuggestion(b: Block) {
@@ -135,37 +183,33 @@ export default function WorkoutPage() {
       timers.current.delete(setId);
       const p = pending.current.get(setId);
       pending.current.delete(setId);
-      if (p) sb.from("sets").update(p).eq("id", setId).then();
+      if (p) enqueue({ table: "sets", kind: "update", match: { id: setId }, values: p });
     };
     if (immediate) run();
     else timers.current.set(setId, setTimeout(run, 500));
   }
 
-  async function flushAll() {
-    const writes = [...pending.current.entries()].map(([sid, p]) => sb.from("sets").update(p).eq("id", sid));
+  function flushAll() {
+    pending.current.forEach((p, sid) => enqueue({ table: "sets", kind: "update", match: { id: sid }, values: p }));
     timers.current.forEach((t) => clearTimeout(t));
     timers.current.clear();
     pending.current.clear();
-    await Promise.all(writes);
   }
 
   // ---------- actions ----------
-  async function addSet(b: Block) {
+  function addSet(b: Block) {
     const last = b.sets[b.sets.length - 1];
-    const row: Partial<WorkoutSet> = {
-      workout_exercise_id: b.we.id,
-      position: (last?.position ?? -1) + 1,
-      set_type: "normal",
-      rest_seconds: last?.rest_seconds ?? null,
-    };
-    const { data } = await sb.from("sets").insert(row).select().single();
-    if (data) setBlocks((bs) => bs.map((x) => (x.we.id === b.we.id ? { ...x, sets: [...x.sets, data] } : x)));
+    const row = emptySet(b.we.id, (last?.position ?? -1) + 1, { rest_seconds: last?.rest_seconds ?? null });
+    enqueue({ table: "sets", kind: "insert", values: [{ id: row.id, workout_exercise_id: row.workout_exercise_id, position: row.position, set_type: "normal", rest_seconds: row.rest_seconds }] });
+    setBlocks((bs) => bs.map((x) => (x.we.id === b.we.id ? { ...x, sets: [...x.sets, row] } : x)));
   }
 
-  async function deleteSet(setId: string) {
+  function deleteSet(setId: string) {
     setBlocks((bs) => bs.map((b) => ({ ...b, sets: b.sets.filter((s) => s.id !== setId) })));
+    const t = timers.current.get(setId);
+    if (t) clearTimeout(t);
     pending.current.delete(setId);
-    await sb.from("sets").delete().eq("id", setId);
+    enqueue({ table: "sets", kind: "delete", match: { id: setId } });
   }
 
   function placeholderFor(b: Block, idx: number) {
@@ -223,32 +267,29 @@ export default function WorkoutPage() {
       const u = updates.find((x) => x.id === b.we.id);
       return u ? { ...b, we: { ...b.we, superset_group: u.g } } : b;
     }));
-    await Promise.all(updates.map((u) => sb.from("workout_exercises").update({ superset_group: u.g }).eq("id", u.id)));
+    updates.forEach((u) => enqueue({ table: "workout_exercises", kind: "update", match: { id: u.id }, values: { superset_group: u.g } }));
   }
 
   async function addExercises(exs: Exercise[]) {
     setPicker(null);
     let pos = blocks.length ? Math.max(...blocks.map((b) => b.we.position)) + 1 : 0;
     const added: Block[] = [];
-    for (const ex of exs) {
-      const { data: we } = await sb.from("workout_exercises").insert({ workout_id: id, exercise_id: ex.id, position: pos++ }).select().single();
-      if (!we) continue;
-      const prev = await lastSets(ex.id, id);
+    const prevs = await Promise.all(exs.map((ex) => lastSets(ex.id, id)));
+    exs.forEach((ex, k) => {
+      const we = { id: uuid(), workout_id: id, exercise_id: ex.id, position: pos++, notes: null, superset_group: null } as WorkoutExercise;
+      const prev = prevs[k];
       const count = Math.max(1, prev.length || 3);
-      const rows = Array.from({ length: count }, (_, p) => ({
-        workout_exercise_id: we.id,
-        position: p,
-        set_type: (prev[p]?.set_type ?? "normal") as SetType,
-      }));
-      const { data: sets } = await sb.from("sets").insert(rows).select();
-      added.push({ we, ex, prev, sets: (sets ?? []).sort((a: WorkoutSet, b: WorkoutSet) => a.position - b.position) });
-    }
+      const sets = Array.from({ length: count }, (_, p) => emptySet(we.id, p, { set_type: (prev[p]?.set_type ?? "normal") as SetType }));
+      enqueue({ table: "workout_exercises", kind: "insert", values: [{ id: we.id, workout_id: id, exercise_id: ex.id, position: we.position }] });
+      enqueue({ table: "sets", kind: "insert", values: sets.map((x) => ({ id: x.id, workout_exercise_id: we.id, position: x.position, set_type: x.set_type })) });
+      added.push({ we, ex, prev, sets });
+    });
     setBlocks((bs) => [...bs, ...added]);
   }
 
   async function replaceExercise(weId: string, ex: Exercise) {
     setPicker(null);
-    await sb.from("workout_exercises").update({ exercise_id: ex.id }).eq("id", weId);
+    enqueue({ table: "workout_exercises", kind: "update", match: { id: weId }, values: { exercise_id: ex.id } });
     const prev = await lastSets(ex.id, id);
     setBlocks((bs) => bs.map((b) => (b.we.id === weId ? { ...b, ex, prev, we: { ...b.we, exercise_id: ex.id } } : b)));
   }
@@ -256,7 +297,7 @@ export default function WorkoutPage() {
   async function removeExercise(weId: string) {
     setMenu(null);
     setBlocks((bs) => bs.filter((b) => b.we.id !== weId));
-    await sb.from("workout_exercises").delete().eq("id", weId);
+    enqueue({ table: "workout_exercises", kind: "delete", match: { id: weId } });
   }
 
   async function move(weId: string, dir: -1 | 1) {
@@ -268,59 +309,75 @@ export default function WorkoutPage() {
     [next[i], next[j]] = [next[j], next[i]];
     const withPos = next.map((b, k) => ({ ...b, we: { ...b.we, position: k } }));
     setBlocks(withPos);
-    await Promise.all(withPos.map((b) => sb.from("workout_exercises").update({ position: b.we.position }).eq("id", b.we.id)));
+    withPos.forEach((b) => enqueue({ table: "workout_exercises", kind: "update", match: { id: b.we.id }, values: { position: b.we.position } }));
   }
 
   async function saveNotes(weId: string, notes: string) {
     setBlocks((bs) => bs.map((b) => (b.we.id === weId ? { ...b, we: { ...b.we, notes } } : b)));
-    await sb.from("workout_exercises").update({ notes: notes || null }).eq("id", weId);
+    enqueue({ table: "workout_exercises", kind: "update", match: { id: weId }, values: { notes: notes || null } });
   }
 
   async function rename(name: string) {
     if (!workout || !name.trim()) return;
     setWorkout({ ...workout, name });
-    await sb.from("workouts").update({ name: name.trim() }).eq("id", id);
+    enqueue({ table: "workouts", kind: "update", match: { id }, values: { name: name.trim() } });
   }
 
   async function finish(asTemplate: boolean) {
-    await flushAll();
+    flushAll();
     // drop empty rows
     const empty = blocks.flatMap((b) =>
       b.sets.filter((s) => s.reps == null && s.weight == null && s.distance_km == null && s.duration_seconds == null && !s.completed_at).map((s) => s.id),
     );
-    if (empty.length) await sb.from("sets").delete().in("id", empty);
     const emptyBlocks = blocks.filter((b) => b.sets.every((s) => empty.includes(s.id))).map((b) => b.we.id);
-    if (emptyBlocks.length) await sb.from("workout_exercises").delete().in("id", emptyBlocks);
+    empty.forEach((sid) => enqueue({ table: "sets", kind: "delete", match: { id: sid } }));
+    emptyBlocks.forEach((wid) => enqueue({ table: "workout_exercises", kind: "delete", match: { id: wid } }));
 
     if (asTemplate && workout) {
-      const { data: tpl } = await sb.from("templates").insert({ name: workout.name }).select("id").single();
-      if (tpl) {
-        const rows = blocks
-          .filter((b) => !emptyBlocks.includes(b.we.id))
-          .map((b, i) => ({
-            template_id: tpl.id,
-            exercise_id: b.ex.id,
-            position: i,
-            target_sets: b.sets.filter((s) => !empty.includes(s.id) && s.set_type !== "warmup").length || 3,
-            notes: b.we.notes,
-          }));
-        if (rows.length) await sb.from("template_exercises").insert(rows);
-      }
+      const tplId = uuid();
+      enqueue({ table: "templates", kind: "insert", values: [{ id: tplId, name: workout.name }] });
+      const rows = blocks
+        .filter((b) => !emptyBlocks.includes(b.we.id))
+        .map((b, i) => ({
+          template_id: tplId,
+          exercise_id: b.ex.id,
+          position: i,
+          target_sets: b.sets.filter((s) => !empty.includes(s.id) && s.set_type !== "warmup").length || 3,
+          notes: b.we.notes,
+        }));
+      if (rows.length) enqueue({ table: "template_exercises", kind: "insert", values: rows });
     }
     if (!workout?.ended_at) {
-      await sb.from("workouts").update({ ended_at: new Date().toISOString() }).eq("id", id);
+      const ended = new Date().toISOString();
+      enqueue({ table: "workouts", kind: "update", match: { id }, values: { ended_at: ended } });
+      setWorkout((w) => (w ? { ...w, ended_at: ended } : w));
+      saveLocal("active", null);
+      await withTimeout(flush(), 5000, false);
       router.push(`/workout/${id}/summary`);
-    } else router.push("/history");
+    } else {
+      await withTimeout(flush(), 5000, false);
+      router.push("/history");
+    }
   }
 
   async function discard() {
     if (!confirmDelete) return setConfirmDelete(true);
-    await sb.from("workouts").delete().eq("id", id);
+    enqueue({ table: "workouts", kind: "delete", match: { id } });
+    dropLocal(`workout:${id}`);
+    saveLocal("active", null);
     router.push("/");
   }
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // ---------- render ----------
+  if (offlineMissing)
+    return (
+      <div className="card mt-10 p-6 text-center">
+        <div className="font-semibold">Ingen täckning</div>
+        <p className="mt-1 text-sm text-ink-3">Passet finns inte sparat på den här enheten ännu. Öppna det igen när du har nät.</p>
+        <Link href="/" className="btn-ghost mt-4">Till Hem</Link>
+      </div>
+    );
   if (loading || !workout) return <PageSkeleton rows={3} />;
 
   const live = !workout.ended_at;
@@ -372,6 +429,35 @@ export default function WorkoutPage() {
         )}
       </header>
 
+      <AnimatePresence>
+        {plan && (
+          <motion.section
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+            className="card-glow mb-4 overflow-hidden p-4"
+          >
+            <div className="flex items-start gap-3">
+              <Sparkles size={18} className="mt-0.5 shrink-0 text-accent" />
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold">{plan.headline}</div>
+                <p className="mt-0.5 text-sm text-ink-2">{plan.summary}</p>
+              </div>
+              <button
+                className="rounded-lg p-1 text-ink-3 hover:bg-surface-2"
+                aria-label="Dölj"
+                onClick={() => {
+                  dropLocal(`plan:${id}`);
+                  setPlan(null);
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </motion.section>
+        )}
+      </AnimatePresence>
+
       <div className="space-y-4">
         <AnimatePresence initial={false}>
         {blocks.map((b, bi) => (
@@ -401,6 +487,16 @@ export default function WorkoutPage() {
             progress={progress.get(b.ex.id)}
             target={targets.get(b.ex.id)}
             onApply={() => applySuggestion(b)}
+            pinned={notes.get(b.ex.id) ?? ""}
+            onPinned={(n) => {
+              saveNote(b.ex.id, n);
+              setNotes((m) => new Map(m).set(b.ex.id, n.trim()));
+            }}
+            onPlates={() => {
+              const s0 = b.sets.find((x) => !x.completed_at && x.set_type !== "warmup") ?? b.sets[0];
+              const ph = s0 ? placeholderFor(b, b.sets.indexOf(s0)) : null;
+              setPlates(s0?.weight ?? ph?.weight ?? null);
+            }}
           />
         ))}
         </AnimatePresence>
@@ -434,6 +530,11 @@ export default function WorkoutPage() {
       )}
       </AnimatePresence>
 
+      <Sheet open={plates !== undefined} onClose={() => setPlates(undefined)}>
+        <div className="eyebrow mb-3 text-accent">Skivkalkylator</div>
+        <PlateCalculator initial={plates ?? undefined} compact />
+      </Sheet>
+
       <FinishDialog open={finishing} live={live} fromTemplate={!!workout.template_id} onCancel={() => setFinishing(false)} onFinish={finish} />
     </main>
   );
@@ -463,11 +564,15 @@ function ExerciseBlock(props: {
   superset: { label: string; first: boolean; last: boolean } | null;
   hasNext: boolean;
   onSuperset: () => void;
+  pinned: string;
+  onPinned: (n: string) => void;
+  onPlates: () => void;
 }) {
   const { b } = props;
   const cardio = isCardio(b.ex);
   const bw = b.ex.is_bodyweight;
   const [showNotes, setShowNotes] = useState(!!b.we.notes);
+  const [pinEdit, setPinEdit] = useState(false);
   let workNo = 0;
 
   const bestPrev = b.prev.reduce<number | null>((m, s) => {
@@ -507,8 +612,14 @@ function ExerciseBlock(props: {
             {bestPrev && <>Förra: e1RM {num(bestPrev)} kg</>}
           </div>
           {props.target?.rationale && <div className="mt-0.5 text-xs italic text-ink-3">{props.target.rationale}</div>}
+          <PinnedNote note={props.pinned} onSave={props.onPinned} editing={pinEdit} onEditingChange={setPinEdit} />
           <ProgressBadge result={props.progress} onApply={props.onApply} />
         </div>
+        {b.ex.equipment === "barbell" && (
+          <button className="rounded-lg p-1.5 text-ink-2 transition hover:bg-surface-2 hover:text-accent" onClick={props.onPlates} aria-label="Skivkalkylator">
+            <Disc3 size={19} />
+          </button>
+        )}
         <div className="relative">
           <button className={`rounded-lg p-1.5 transition ${props.menuOpen ? "bg-surface-2 text-ink" : "text-ink-2 hover:bg-surface-2"}`} onClick={props.onMenu} aria-label="Meny">
             <motion.span className="flex" animate={{ rotate: props.menuOpen ? 90 : 0 }} transition={spring}>
@@ -533,7 +644,8 @@ function ExerciseBlock(props: {
                   {props.superset ? "Lös upp superset" : "Superset med nästa"}
                 </MenuItem>
               )}
-              <MenuItem icon={<StickyNote size={16} />} onClick={() => { setShowNotes(true); props.onMenu(); }}>Anteckning</MenuItem>
+              <MenuItem icon={<StickyNote size={16} />} onClick={() => { setShowNotes(true); props.onMenu(); }}>Anteckning (bara idag)</MenuItem>
+              <MenuItem icon={<Pin size={16} />} onClick={() => { setPinEdit(true); props.onMenu(); }}>{props.pinned ? "Ändra fast notering" : "Fast notering"}</MenuItem>
               <MenuItem icon={<Trash2 size={16} />} onClick={props.onRemove} danger>Ta bort övning</MenuItem>
             </motion.div>
           )}

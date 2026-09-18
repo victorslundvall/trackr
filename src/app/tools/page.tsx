@@ -4,13 +4,14 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { parseNum } from "@/lib/format";
+import PlateCalculator from "@/components/PlateCalculator";
 
 type Unit = "kg" | "lbs";
 const LB = 2.20462;
 const fmt = (n: number, d = 1) => Number(n.toFixed(d)).toLocaleString("sv-SE");
 
 export default function ToolsPage() {
-  const [tab, setTab] = useState<"1rm" | "tdee">("1rm");
+  const [tab, setTab] = useState<"1rm" | "plates" | "tdee">("1rm");
   const [unit, setUnit] = useState<Unit>("kg");
   return (
     <main className="space-y-5">
@@ -30,8 +31,9 @@ export default function ToolsPage() {
       <div className="flex gap-1 rounded-xl bg-surface p-1">
         {(
           [
-            ["1rm", "1RM & procent"],
-            ["tdee", "Kalorier (TDEE)"],
+            ["1rm", "1RM & %"],
+            ["plates", "Skivor"],
+            ["tdee", "Kalorier"],
           ] as const
         ).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`flex-1 rounded-lg py-2 text-sm font-medium ${tab === k ? "bg-surface-2 text-ink" : "text-ink-3"}`}>
@@ -39,7 +41,16 @@ export default function ToolsPage() {
           </button>
         ))}
       </div>
-      {tab === "1rm" ? <OneRm unit={unit} /> : <Tdee unit={unit} />}
+      {tab === "1rm" ? (
+        <OneRm unit={unit} />
+      ) : tab === "plates" ? (
+        <section className="card p-4">
+          <PlateCalculator />
+          <p className="mt-3 text-xs text-ink-3">Skivor: 25, 20, 15, 10, 5, 2,5 och 1,25 kg. Räknar alltid i kg.</p>
+        </section>
+      ) : (
+        <Tdee unit={unit} />
+      )}
     </main>
   );
 }
