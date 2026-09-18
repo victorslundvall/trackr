@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowUp, Check, ChevronLeft, Loader2, Plus, Sparkles } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { coachStream, matchExercises, saveProgram, splitQuickReplies, type MatchRow } from "@/lib/coach/client";
-import type { ProgramDraft } from "@/lib/coach/program";
+import { isValidDraft, type ProgramDraft } from "@/lib/coach/program";
 import Markdown from "@/components/Markdown";
 import ProgramView from "@/components/ProgramView";
 
@@ -92,7 +92,7 @@ export default function CoachChat() {
 
   if (!chat) return <div className="py-20 text-center text-ink-3">Laddar…</div>;
 
-  const lastDraftIdx = msgs.map((m) => !!m.program_draft).lastIndexOf(true);
+  const lastDraftIdx = msgs.map((m) => isValidDraft(m.program_draft)).lastIndexOf(true);
   const last = msgs[msgs.length - 1];
   const quick = !streaming && last?.role === "assistant" ? splitQuickReplies(last.content).options : [];
 
@@ -134,7 +134,7 @@ export default function CoachChat() {
                       </div>
                     </div>
                   )}
-                  {m.program_draft && (
+                  {m.program_draft && isValidDraft(m.program_draft) && (
                     <div className={`card p-4 ${i === lastDraftIdx ? "border-accent/40" : "opacity-70"}`}>
                       {i !== lastDraftIdx && <div className="mb-2 text-xs uppercase tracking-wide text-ink-3">Tidigare version</div>}
                       <ProgramView draft={m.program_draft} initiallyOpen={i === lastDraftIdx} />

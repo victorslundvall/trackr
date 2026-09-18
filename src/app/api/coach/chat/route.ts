@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { serverSupabase } from "@/lib/supabase/server";
 import { COACH_SYSTEM, profileText } from "@/lib/coach/knowledge";
 import { historySummary } from "@/lib/coach/context";
-import { PROPOSE_PROGRAM_TOOL, normalizeDraft, type ProgramDraft } from "@/lib/coach/program";
+import { PROPOSE_PROGRAM_TOOL, isValidDraft, normalizeDraft, type ProgramDraft } from "@/lib/coach/program";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
   const msgs: Anthropic.MessageParam[] = [];
   for (const m of (stored ?? []) as Stored[]) {
     let text = m.content;
-    if (m.role === "assistant" && m.program_draft) {
+    if (m.role === "assistant" && isValidDraft(m.program_draft)) {
       text += `\n\n<senaste_programforslag>\n${JSON.stringify(m.program_draft)}\n</senaste_programforslag>`;
     }
     if (!text.trim()) continue;
@@ -67,7 +67,9 @@ export async function POST(req: Request) {
       try {
         const stream = client.messages.stream({
           model: MODEL,
-          max_tokens: 16000,
+          // Sonnet 5 thinks adaptively and thinking counts toward max_tokens – leave plenty of room for the program JSON.
+          max_tokens: 32000,
+          output_config: { effort: "medium" },
           system: [
             { type: "text", text: COACH_SYSTEM, cache_control: { type: "ephemeral" } },
             { type: "text", text: ctx.join("\n\n") },
@@ -80,11 +82,20 @@ export async function POST(req: Request) {
           send({ t: "text", d: delta });
         });
         stream.on("streamEvent", (ev) => {
-          if (ev.type === "content_block_start" && ev.content_block.type === "tool_use") send({ t: "status", d: "Bygger programmet…" });
+          if (ev.type !== "content_block_start") return;
+          if (ev.content_block.type === "tool_use") send({ t: "status", d: "Bygger programmet…" });
+          else if (ev.content_block.type === "thinking") send({ t: "status", d: "Tänker…" });
         });
         const final = await stream.finalMessage();
         const tool = final.content.find((c) => c.type === "tool_use" && c.name === "propose_program");
-        const draft = tool && tool.type === "tool_use" ? normalizeDraft(tool.input as ProgramDraft) : null;
+        let draft: ProgramDraft | null = null;
+        if (tool && tool.type === "tool_use") {
+          const d = normalizeDraft(tool.input as ProgramDraft);
+          if (final.stop_reason !== "max_tokens" && isValidDraft(d)) draft = d;
+          else send({ t: "error", d: "Programmet blev inte komplett (svaret klipptes). Skriv t.ex. “bygg programmet igen” så gör coachen ett nytt försök." });
+        } else if (final.stop_reason === "max_tokens") {
+          send({ t: "error", d: "Svaret blev för långt och klipptes. Försök igen." });
+        }
         if (draft) send({ t: "program", d: draft });
 
         const { data: saved } = await sb

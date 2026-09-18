@@ -100,10 +100,17 @@ export const PROPOSE_PROGRAM_TOOL = {
   },
 };
 
+/** A draft must have a name and at least one day with exercises to be shown/saved. */
+export function isValidDraft(d: Partial<ProgramDraft> | null | undefined): d is ProgramDraft {
+  return !!d && typeof d.name === "string" && !!d.name.trim() && Array.isArray(d.days) && d.days.length > 0 && d.days.every((x) => Array.isArray(x.exercises) && x.exercises.length > 0 && x.exercises.every((e) => !!e.name));
+}
+
 /** Light sanity-fixing of model output. */
 export function normalizeDraft(d: ProgramDraft): ProgramDraft {
   return {
     ...d,
+    days_per_week: d.days_per_week ?? d.days?.length ?? 0,
+    weeks: d.weeks ?? d.week_plan?.length ?? 0,
     week_plan: (d.week_plan ?? []).map((w, i) => ({ ...w, week: w.week ?? i + 1 })),
     days: (d.days ?? []).map((day) => ({
       ...day,
