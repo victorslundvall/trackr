@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Trakkr",
     short_name: "Trakkr",
     description: "Träningslogg för styrka och hypertrofi",
-    start_url: "/",
+    start_url: "/home",
     scope: "/",
     display: "standalone",
     orientation: "portrait",

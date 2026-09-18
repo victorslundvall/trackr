@@ -29,3 +29,4 @@ Senare migreringar:
 7. `coach_philosophy` – `coach_philosophy` (principer per användare) och `coach_philosophy_suggestions` (förslag från den kvartalsvisa forskningsuppgiften).
 8. `stats_tools_ai` – `user_settings` (nivå, fokusmuskler), `workouts.ai_comment`, `template_exercises.superset_group`, `block_reports`; RPC `daily_sets`, `session_bests`, `pr_timeline`, `block_stats`.
 9. `readiness_weekly_notes_photos` – `readiness` (dagsform + coachens plan), `weekly_reports`, `exercise_notes`, `progress_photos` och privat Storage-bucket `progress-photos` (policys: bara egen mapp `<uid>/…`).
+10. `invite_codes` – `app_admins`, `invite_codes` och `is_admin()`. `check_invite(code)` kan anropas utloggat från registreringen. Triggern `require_invite_code` på `auth.users` kräver en oanvänd kod i user metadata (`invite_code`) och markerar den som använd. Skapar du användare manuellt i Supabase-dashboarden: stäng av triggern tillfälligt.

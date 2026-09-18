@@ -61,6 +61,11 @@ Kräver `ANTHROPIC_API_KEY` i `.env.local` (och i Vercel). Valfritt: `COACH_MODE
 - **Progressbilder:** privat Storage-bucket `progress-photos`, jämförelse med reglage (`/photos`).
 - **CSV-export:** Mer → Exportera, StrengthLog-kompatibelt format.
 
+## Startsida och inbjudningar (v0.7)
+
+- `trakkr.se/` är den publika startsidan (`src/components/landing`). Inloggade skickas till `/home`, som är appens Hem.
+- Registrering kräver en inbjudningskod. Admin skapar och delar koder under Mer → Inbjudningar; länken fyller i koden automatiskt (`/login?mode=up&invite=KOD`).
+
 ## Struktur
 
 ```

@@ -88,7 +88,7 @@ export default function WorkoutPage() {
     const [{ data: w }, { data: wes }, exercises, bw] = fetched;
     if (!w) {
       if (snap) return applySnapshot(snap);
-      return router.replace("/");
+      return router.replace("/home");
     }
     const weIds = (wes ?? []).map((x: WorkoutExercise) => x.id);
     const { data: sets } = weIds.length
@@ -365,7 +365,7 @@ export default function WorkoutPage() {
     enqueue({ table: "workouts", kind: "delete", match: { id } });
     dropLocal(`workout:${id}`);
     saveLocal("active", null);
-    router.push("/");
+    router.push("/home");
   }
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -375,7 +375,7 @@ export default function WorkoutPage() {
       <div className="card mt-10 p-6 text-center">
         <div className="font-semibold">Ingen täckning</div>
         <p className="mt-1 text-sm text-ink-3">Passet finns inte sparat på den här enheten ännu. Öppna det igen när du har nät.</p>
-        <Link href="/" className="btn-ghost mt-4">Till Hem</Link>
+        <Link href="/home" className="btn-ghost mt-4">Till Hem</Link>
       </div>
     );
   if (loading || !workout) return <PageSkeleton rows={3} />;
@@ -388,7 +388,7 @@ export default function WorkoutPage() {
   return (
     <main className={rest ? "pb-28" : ""}>
       <header className="sticky top-0 z-20 -mx-4 mb-4 flex items-center gap-2 border-b border-line bg-bg/80 px-4 py-3 backdrop-blur-xl">
-        <Link href={live ? "/" : "/history"} className="btn-ghost px-2.5" aria-label="Tillbaka">
+        <Link href={live ? "/home" : "/history"} className="btn-ghost px-2.5" aria-label="Tillbaka">
           <ChevronLeft size={18} />
         </Link>
         <div className="min-w-0 flex-1">

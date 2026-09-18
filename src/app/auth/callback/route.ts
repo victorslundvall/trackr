@@ -8,5 +8,5 @@ export async function GET(request: NextRequest) {
     const sb = await serverSupabase();
     await sb.auth.exchangeCodeForSession(code);
   }
-  return NextResponse.redirect(new URL("/", url.origin));
+  return NextResponse.redirect(new URL("/home", url.origin));
 }

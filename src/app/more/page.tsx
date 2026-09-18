@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Calculator, Camera, ChevronRight, ClipboardList, Download, FileUp, Loader2, LogOut, Ruler, TrendingUp, Upload } from "lucide-react";
+import { Calculator, Camera, Ticket, ChevronRight, ClipboardList, Download, FileUp, Loader2, LogOut, Ruler, TrendingUp, Upload } from "lucide-react";
 import { exportCsv } from "@/lib/export";
 import { supabase } from "@/lib/supabase/client";
 
@@ -18,12 +18,16 @@ const links = [
 
 export default function MorePage() {
   const [email, setEmail] = useState<string | null>(null);
+  const [admin, setAdmin] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
   const [exported, setExported] = useState<string | null>(null);
   useEffect(() => {
     supabase()
       .auth.getUser()
       .then(({ data }) => setEmail(data.user?.email ?? null));
+    supabase()
+      .rpc("is_admin")
+      .then(({ data }) => setAdmin(!!data));
   }, []);
 
   async function logout() {
@@ -35,7 +39,7 @@ export default function MorePage() {
     <main className="space-y-5">
       <h1 className="h1">Mer</h1>
       <ul className="card stagger divide-y divide-line overflow-hidden">
-        {links.map(({ href, label, icon: Icon }) => (
+        {[...links, ...(admin ? [{ href: "/invites", label: "Inbjudningar", icon: Ticket }] : [])].map(({ href, label, icon: Icon }) => (
           <li key={href}>
             <Link href={href} className="flex items-center gap-3 px-4 py-3.5 hover:bg-surface-2">
               <Icon size={18} className="text-ink-2" />

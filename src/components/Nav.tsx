@@ -7,7 +7,7 @@ import { BarChart3, CalendarDays, Dumbbell, Home, Menu, Sparkles } from "lucide-
 import { spring } from "./motion";
 
 const items = [
-  { href: "/", label: "Hem", icon: Home },
+  { href: "/home", label: "Hem", icon: Home },
   { href: "/history", label: "Historik", icon: CalendarDays },
   { href: "/coach", label: "Coach", icon: Sparkles },
   { href: "/exercises", label: "Övningar", icon: Dumbbell },
@@ -17,12 +17,12 @@ const items = [
 
 export default function Nav() {
   const path = usePathname();
-  if (path.startsWith("/login") || path.startsWith("/workout/") || (/^\/coach\/[^/]+$/.test(path) && !["/coach/new", "/coach/philosophy", "/coach/import"].includes(path))) return null;
+  if (path === "/" || path.startsWith("/login") || path.startsWith("/workout/") || (/^\/coach\/[^/]+$/.test(path) && !["/coach/new", "/coach/philosophy", "/coach/import"].includes(path))) return null;
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
       <ul className="mx-auto grid max-w-md grid-cols-6 rounded-[1.4rem] border border-line/80 bg-surface/80 p-1 shadow-[0_12px_40px_-12px_rgb(0_0_0/0.8)] backdrop-blur-xl">
         {items.map(({ href, label, icon: Icon }) => {
-          const active = href === "/" ? path === "/" : path.startsWith(href);
+          const active = path.startsWith(href);
           return (
             <li key={href} className="relative">
               {active && (

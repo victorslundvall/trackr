@@ -76,7 +76,7 @@ export default function WorkoutSummary() {
         <p className="mt-1 text-sm text-ink-3">
           {outbox.online ? "Det tar bara ett ögonblick." : "Det synkas automatiskt när du får täckning. Sammanfattningen visas då."}
         </p>
-        <Link href="/" className="btn-ghost mt-4">
+        <Link href="/home" className="btn-ghost mt-4">
           Till Hem
         </Link>
       </div>
@@ -174,7 +174,7 @@ export default function WorkoutSummary() {
 
       <div className="flex gap-2">
         <Link href={`/workout/${id}`} className="btn-ghost flex-1">Visa passet</Link>
-        <Link href="/" className="btn-primary flex-1">Klar</Link>
+        <Link href="/home" className="btn-primary flex-1">Klar</Link>
       </div>
     </main>
   );

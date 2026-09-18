@@ -44,7 +44,7 @@ export default function ProgressPage() {
   return (
     <main className="space-y-5">
       <div className="flex items-center gap-2">
-        <Link href="/" className="btn-ghost px-2.5" aria-label="Tillbaka">
+        <Link href="/home" className="btn-ghost px-2.5" aria-label="Tillbaka">
           <ChevronLeft size={18} />
         </Link>
         <h1 className="h1 flex-1">Progression</h1>

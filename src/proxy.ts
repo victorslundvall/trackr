@@ -26,6 +26,13 @@ export async function proxy(request: NextRequest) {
   const user = data?.claims;
   const path = request.nextUrl.pathname;
 
+  // "/" is the public landing page; signed-in users go straight to the app.
+  if (path === "/") {
+    if (!user) return response;
+    const url = request.nextUrl.clone();
+    url.pathname = "/home";
+    return NextResponse.redirect(url);
+  }
   if (!user && !PUBLIC.some((p) => path.startsWith(p))) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
@@ -33,7 +40,8 @@ export async function proxy(request: NextRequest) {
   }
   if (user && path === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/home";
+    url.search = "";
     return NextResponse.redirect(url);
   }
   return response;
