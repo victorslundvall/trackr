@@ -1,4 +1,4 @@
-# Trackr
+# Trakkr
 
 Personlig träningslogg (egen variant av StrengthLog). Next.js 16 + Supabase.
 

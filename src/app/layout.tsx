@@ -8,9 +8,9 @@ import { MotionProvider } from "@/components/motion";
 import SyncStatus from "@/components/SyncStatus";
 
 export const metadata: Metadata = {
-  title: "Trackr",
+  title: "Trakkr",
   description: "Träningslogg för styrka och hypertrofi",
-  appleWebApp: { capable: true, title: "Trackr", statusBarStyle: "black" },
+  appleWebApp: { capable: true, title: "Trakkr", statusBarStyle: "black" },
   icons: { apple: "/apple-touch-icon.png" },
 };
 

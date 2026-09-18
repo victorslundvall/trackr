@@ -109,7 +109,7 @@ export default function CoachChat() {
           <div className="truncate font-semibold">{chat.title}</div>
           <div className="flex items-center gap-1.5 text-xs text-ink-3">
             <span className={`h-1.5 w-1.5 rounded-full ${streaming ? "animate-pulse bg-accent" : "bg-accent/60"}`} />
-            {streaming ? "Skriver…" : "Trackr Coach"}
+            {streaming ? "Skriver…" : "Trakkr Coach"}
           </div>
         </div>
         {chat.program_id && (

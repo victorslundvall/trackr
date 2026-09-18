@@ -1,6 +1,6 @@
-// Trackr service worker – makes the app installable and keeps the app shell usable on a flaky gym connection.
+// Trakkr service worker – makes the app installable and keeps the app shell usable on a flaky gym connection.
 // Data calls to Supabase and /api are never cached.
-const VERSION = "trackr-v2";
+const VERSION = "trakkr-v3";
 const SHELL = ["/offline.html", "/icon-192.png", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {

@@ -1,5 +1,7 @@
 "use client";
 
+import Logo from "@/components/Logo";
+
 import { useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
@@ -35,9 +37,7 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-[80dvh] flex-col justify-center">
       <div className="mb-10">
-        <div className="text-4xl font-black tracking-tight">
-          Trackr<span className="text-accent">.</span>
-        </div>
+        <Logo size={44} animate />
         <p className="mt-2 text-ink-2">Logga passen. Se framstegen.</p>
       </div>
       <form onSubmit={submit} className="card space-y-4 p-5">

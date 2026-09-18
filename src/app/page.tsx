@@ -15,6 +15,7 @@ import { loadSettings, volumeTarget, type UserSettings } from "@/lib/settings";
 import { MiniMuscleMap, type MuscleState } from "@/components/MuscleMap";
 import { CountUp, spring } from "@/components/motion";
 import ReadinessSheet from "@/components/ReadinessSheet";
+import Logo from "@/components/Logo";
 import { enqueue, loadLocal, saveLocal } from "@/lib/offline";
 import type { WeeklyReport } from "@/app/weekly/[week]/page";
 import type { Workout } from "@/lib/types";
@@ -167,12 +168,7 @@ export default function Home() {
       <header className="flex items-end justify-between gap-4 pb-1 pt-1">
         <div>
           <div className="eyebrow">{new Date().toLocaleDateString("sv-SE", { weekday: "long", day: "numeric", month: "long" })}</div>
-          <div className="mt-1 text-[2.4rem] font-black leading-none tracking-tighter">
-            Trackr
-            <motion.span className="inline-block text-accent" initial={{ scale: 0, y: -12 }} animate={{ scale: 1, y: 0 }} transition={{ ...spring, delay: 0.25 }}>
-              .
-            </motion.span>
-          </div>
+          <Logo size={38} animate className="mt-1.5" />
         </div>
       </header>
 

@@ -72,7 +72,7 @@ export default function MorePage() {
           <LogOut size={16} /> Logga ut
         </button>
       </div>
-      <p className="text-center text-xs text-ink-3">Trackr v0.6 · Övningsdata från free-exercise-db (public domain)</p>
+      <p className="text-center text-xs text-ink-3">Trakkr v0.6 · Övningsdata från free-exercise-db (public domain)</p>
     </main>
   );
 }

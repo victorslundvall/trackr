@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       .filter((e) => e.first && e.last)
       .map((e) => `${e.name}: ${e.first} → ${e.last} kg e1RM (${e.sessions} pass, ${(((Number(e.last) - Number(e.first)) / Number(e.first)) * 100).toFixed(1)}%)`)
       .join("\n");
-    const system = `Du är Trackr Coach. Skriv en blockrapport på svenska för ett avslutat träningsblock: 1) en mening om helheten (genomförda pass mot planerat), 2) vad som gick bäst (störst ökning i e1RM), 3) vad som stod still eller gick bakåt, 4) volym per muskel jämfört med filosofins mål, 5) 2–3 konkreta förslag inför nästa block (t.ex. byta en stagnerad övning, justera rep-intervall, lägga till/ta bort set, deload om det behövs). Max ca 180 ord. Korta stycken eller en kort punktlista. Använd siffrorna, hitta inte på något.\n\n${await userPhilosophy(sb)}`;
+    const system = `Du är Trakkr Coach. Skriv en blockrapport på svenska för ett avslutat träningsblock: 1) en mening om helheten (genomförda pass mot planerat), 2) vad som gick bäst (störst ökning i e1RM), 3) vad som stod still eller gick bakåt, 4) volym per muskel jämfört med filosofins mål, 5) 2–3 konkreta förslag inför nästa block (t.ex. byta en stagnerad övning, justera rep-intervall, lägga till/ta bort set, deload om det behövs). Max ca 180 ord. Korta stycken eller en kort punktlista. Använd siffrorna, hitta inte på något.\n\n${await userPhilosophy(sb)}`;
     const user = `Program: ${p.name}\nBlock ${idx + 1}: ${stats.workouts} av ${stats.planned} planerade pass, ${stats.weeks} veckor (${stats.start?.slice(0, 10)} – ${stats.end?.slice(0, 10)})\n\nÖvningar (första → sista passet i blocket):\n${ex || "–"}\n\nSnittvolym per muskel och vecka: ${perWeek || "–"}`;
     try {
       ai = await quickText(system, user, 1200);

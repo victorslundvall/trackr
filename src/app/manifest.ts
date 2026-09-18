@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Trackr",
-    short_name: "Trackr",
+    name: "Trakkr",
+    short_name: "Trakkr",
     description: "Träningslogg för styrka och hypertrofi",
     start_url: "/",
     scope: "/",
