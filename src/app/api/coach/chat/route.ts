@@ -109,8 +109,10 @@ export async function POST(req: Request) {
           }
           usage.push({ ...final.usage, stop_reason: final.stop_reason, strict: useStrict });
 
-          const tool = final.content.find((c) => c.type === "tool_use" && c.name === "propose_program");
-          if (!tool || tool.type !== "tool_use") {
+          // The model may emit several tool_use blocks in one turn – consider all, prefer the last valid one.
+          const toolUses = final.content.filter((c): c is Anthropic.ToolUseBlock => c.type === "tool_use");
+          const tool = [...toolUses].reverse().find((c) => c.name === "propose_program" && !draftProblem(normalizeDraft(c.input))) ?? toolUses[toolUses.length - 1];
+          if (!tool) {
             if (final.stop_reason === "max_tokens") send({ t: "error", d: "Svaret blev för långt och klipptes. Försök igen." });
             break;
           }
@@ -123,16 +125,18 @@ export async function POST(req: Request) {
           rejected = tool.input;
           send({ t: "status", d: "Rättar programmet…" });
           convo.push({ role: "assistant", content: final.content });
+          // Every tool_use block needs its own tool_result in the next message.
           convo.push({
             role: "user",
-            content: [
-              {
-                type: "tool_result",
-                tool_use_id: tool.id,
-                is_error: true,
-                content: `Programmet kunde inte visas: ${problem}. Anropa propose_program igen med HELA programmet. days och exercises ska vara riktiga JSON-arrayer (inte strängar). Skriv ingen ny text till användaren.`,
-              },
-            ],
+            content: toolUses.map((tu) => ({
+              type: "tool_result" as const,
+              tool_use_id: tu.id,
+              is_error: true,
+              content:
+                tu.id === tool.id
+                  ? `Programmet kunde inte visas: ${problem}. Anropa propose_program igen EN gång med HELA programmet. days och exercises ska vara riktiga JSON-arrayer (inte strängar). Skriv ingen ny text till användaren.`
+                  : "Ignorerat – anropa propose_program bara en gång per svar.",
+            })),
           });
         }
 
@@ -153,6 +157,7 @@ export async function POST(req: Request) {
           .eq("id", chatId);
         send({ t: "done", id: saved?.id });
       } catch (e) {
+        console.error("[coach] request failed", e);
         const msg = e instanceof Anthropic.APIError ? `${e.status}: ${e.message}` : (e as Error).message;
         send({ t: "error", d: msg });
       } finally {
