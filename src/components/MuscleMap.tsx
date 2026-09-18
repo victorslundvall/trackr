@@ -149,3 +149,31 @@ export default function MuscleMap({ data }: { data: Record<string, MuscleState> 
     </div>
   );
 }
+
+/** Small, non-interactive front + back map for widgets. */
+export function MiniMuscleMap({ data, className }: { data: Record<string, MuscleState>; className?: string }) {
+  const fillFor = (m: string | null) => {
+    if (!m) return BASE;
+    const s = data[m];
+    return !s || s.sets <= 0 ? IDLE : muscleColor(s);
+  };
+  return (
+    <div className={`flex items-end justify-center gap-1 ${className ?? ""}`} aria-hidden>
+      {[BODY_FRONT, BODY_BACK].map((shapes, k) => (
+        <svg key={k} viewBox={VIEWBOX} className="h-full w-auto">
+          {shapes.map((s, i) => (
+            <path
+              key={i}
+              d={s.d}
+              fill={fillFor(s.m)}
+              stroke="var(--color-bg)"
+              strokeWidth={3}
+              className="muscle-in"
+              style={{ animationDelay: `${k * 80 + (s.m ? 120 + (i % 20) * 15 : 0)}ms` }}
+            />
+          ))}
+        </svg>
+      ))}
+    </div>
+  );
+}
