@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { motion } from "motion/react";
 import { muscleLabel, num } from "@/lib/format";
 
 export type MuscleState = { sets: number; target: { min: number; max: number } | null };
@@ -55,17 +56,22 @@ export default function MuscleMap({ data }: { data: Record<string, MuscleState> 
     <figure className="flex flex-1 flex-col items-center">
       <svg viewBox="0 0 120 250" className="w-full max-w-[170px]" role="img" aria-label={`Muskelkarta ${label}`}>
         <path d={SILHOUETTE} fill="var(--color-surface)" stroke="var(--color-line)" strokeWidth={1.5} />
-        {shapes.map((s) => (
-          <path
+        {shapes.map((s, i) => (
+          <motion.path
             key={s.m + s.d.slice(0, 8)}
             d={s.d}
+            style={{ transformBox: "fill-box", transformOrigin: "center", transition: "fill 0.4s ease" }}
+            initial={{ opacity: 0, scale: 0.85 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5, delay: 0.1 + i * 0.05, ease: [0.16, 1, 0.3, 1] }}
             fill={muscleColor(data[s.m])}
             stroke={hover === s.m ? "var(--color-ink)" : "var(--color-bg)"}
             strokeWidth={hover === s.m ? 1.5 : 1}
             onPointerEnter={() => setHover(s.m)}
             onPointerDown={() => setHover(s.m)}
             onPointerLeave={() => setHover(null)}
-            className="cursor-pointer transition-colors"
+            className="cursor-pointer"
           />
         ))}
       </svg>
@@ -79,12 +85,17 @@ export default function MuscleMap({ data }: { data: Record<string, MuscleState> 
         {figure(FRONT, "Framsida")}
         {figure(BACK, "Baksida")}
         {hover && (
-          <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 text-xs shadow-lg">
+          <motion.div
+            key={hover}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 rounded-lg border border-line bg-surface-2/95 px-2.5 py-1.5 text-xs shadow-lg backdrop-blur"
+          >
             <div className="font-semibold text-ink">{muscleLabel(hover)}</div>
             <div className="text-ink-2">
               {num(h?.sets ?? 0)} set{h?.target ? ` · mål ${h.target.min}–${h.target.max}` : ""}
             </div>
-          </div>
+          </motion.div>
         )}
       </div>
       <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1.5 text-xs text-ink-2">

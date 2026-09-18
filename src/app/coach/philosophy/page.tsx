@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ExternalLink, Pencil, Plus, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 import { EVIDENCE_LABEL, SECTIONS, type Evidence, type Principle } from "@/lib/coach/knowledge";
+import { PageSkeleton } from "@/components/motion";
 import {
   applyChanges,
   loadPhilosophy,
@@ -52,7 +53,7 @@ export default function PhilosophyPage() {
     setTimeout(() => setSaved(null), 1800);
   }
 
-  if (!list) return <div className="py-20 text-center text-ink-3">Laddar…</div>;
+  if (!list) return <PageSkeleton />;
 
   return (
     <main className="space-y-5">

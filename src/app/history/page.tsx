@@ -105,7 +105,7 @@ export default function HistoryPage() {
           const names = w.workout_exercises.map((we) => we.exercises?.name).filter(Boolean);
           return (
             <li key={w.id}>
-              <Link href={`/workout/${w.id}`} className="card block p-4 hover:border-ink-3">
+              <Link href={`/workout/${w.id}`} className="card interactive block p-4">
                 <div className="flex items-baseline justify-between gap-2">
                   <div className="truncate font-semibold">{w.name}</div>
                   <div className="shrink-0 text-xs text-ink-3">

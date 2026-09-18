@@ -77,6 +77,8 @@ export default function Heatmap({ days }: { days: { day: string; sets: number }[
                   rx={2.5}
                   fill={fill[level(c.sets)]}
                   stroke={hover?.day === c.day ? "var(--color-ink)" : "none"}
+                  className="heat-cell"
+                  style={{ animationDelay: `${Math.max(0, w - (weeks.length - 26)) * 14 + d * 10}ms` }}
                   onPointerEnter={() => setHover(c)}
                   onPointerDown={() => setHover(c)}
                 />

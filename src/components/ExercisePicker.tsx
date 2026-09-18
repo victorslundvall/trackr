@@ -49,7 +49,7 @@ export default function ExercisePicker({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-bg">
+    <div className="fixed inset-0 z-50 flex animate-fade-up flex-col bg-bg">
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col overflow-hidden px-4 pt-4">
         <div className="mb-3 flex items-center gap-2">
           <div className="relative flex-1">

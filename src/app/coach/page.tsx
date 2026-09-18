@@ -26,7 +26,7 @@ export default function CoachHome() {
         <p className="mt-1 text-sm text-ink-2">Chatta fram ett program byggt på aktuell hypertrofiforskning och din egen historik.</p>
       </div>
 
-      <Link href="/coach/new" className="card flex items-center gap-4 border-accent/40 bg-accent/10 p-4 hover:border-accent">
+      <Link href="/coach/new" className="card-glow interactive flex items-center gap-4 p-4">
         <span className="flex h-11 w-11 items-center justify-center rounded-full bg-accent text-accent-ink">
           <Sparkles size={20} />
         </span>
@@ -37,7 +37,7 @@ export default function CoachHome() {
         <Plus size={20} className="text-accent" />
       </Link>
 
-      <Link href="/coach/import" className="card flex items-center gap-3 p-4 hover:border-ink-3">
+      <Link href="/coach/import" className="card interactive flex items-center gap-3 p-4">
         <FileUp size={19} className="text-ink-2" />
         <div className="flex-1">
           <div className="font-medium">Importera program</div>
@@ -46,7 +46,7 @@ export default function CoachHome() {
         <ChevronRight size={16} className="text-ink-3" />
       </Link>
 
-      <Link href="/coach/philosophy" className="card flex items-center gap-3 p-4 hover:border-ink-3">
+      <Link href="/coach/philosophy" className="card interactive flex items-center gap-3 p-4">
         <BookOpen size={19} className="text-ink-2" />
         <div className="flex-1">
           <div className="font-medium">Träningsfilosofi</div>
@@ -58,7 +58,7 @@ export default function CoachHome() {
       {programs.length > 0 && (
         <section>
           <h2 className="mb-2 font-semibold">Program</h2>
-          <ul className="card divide-y divide-line">
+          <ul className="card stagger divide-y divide-line overflow-hidden">
             {programs.map((p) => (
               <li key={p.id}>
                 <Link href={`/programs/${p.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-surface-2">
@@ -80,7 +80,7 @@ export default function CoachHome() {
       {chats.length > 0 && (
         <section>
           <h2 className="mb-2 font-semibold">Konversationer</h2>
-          <ul className="card divide-y divide-line">
+          <ul className="card stagger divide-y divide-line overflow-hidden">
             {chats.map((c) => (
               <li key={c.id}>
                 <Link href={`/coach/${c.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-surface-2">

@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "motion/react";
 import { ArrowUp, Check, ChevronLeft, Loader2, Plus, Sparkles } from "lucide-react";
+import { PageSkeleton, Sheet, TypingDots, spring } from "@/components/motion";
 import { supabase } from "@/lib/supabase/client";
 import { coachStream, matchExercises, saveProgram, splitQuickReplies, type MatchRow } from "@/lib/coach/client";
 import { isValidDraft, type ProgramDraft } from "@/lib/coach/program";
@@ -90,7 +92,7 @@ export default function CoachChat() {
     }
   }
 
-  if (!chat) return <div className="py-20 text-center text-ink-3">Laddar…</div>;
+  if (!chat) return <PageSkeleton rows={3} />;
 
   const lastDraftIdx = msgs.map((m) => isValidDraft(m.program_draft)).lastIndexOf(true);
   const last = msgs[msgs.length - 1];
@@ -98,13 +100,17 @@ export default function CoachChat() {
 
   return (
     <main className="flex min-h-[calc(100dvh-2.5rem)] flex-col">
-      <header className="sticky top-0 z-20 -mx-4 mb-3 flex items-center gap-2 border-b border-line bg-bg/90 px-4 py-3 backdrop-blur-md">
+      <header className="sticky top-0 z-20 -mx-4 mb-3 flex items-center gap-2.5 border-b border-line bg-bg/80 px-4 py-3 backdrop-blur-xl">
         <Link href="/coach" className="btn-ghost px-2.5" aria-label="Tillbaka">
           <ChevronLeft size={18} />
         </Link>
+        <CoachAvatar busy={streaming} size={36} />
         <div className="min-w-0 flex-1">
           <div className="truncate font-semibold">{chat.title}</div>
-          <div className="text-xs text-ink-3">Trackr Coach</div>
+          <div className="flex items-center gap-1.5 text-xs text-ink-3">
+            <span className={`h-1.5 w-1.5 rounded-full ${streaming ? "animate-pulse bg-accent" : "bg-accent/60"}`} />
+            {streaming ? "Skriver…" : "Trackr Coach"}
+          </div>
         </div>
         {chat.program_id && (
           <Link href={`/programs/${chat.program_id}`} className="btn-ghost px-3 py-2 text-xs">
@@ -114,28 +120,45 @@ export default function CoachChat() {
       </header>
 
       <div className="flex-1 space-y-4 pb-40">
+        <AnimatePresence initial={false}>
         {msgs.map((m, i) => {
           const isUser = m.role === "user";
           const { clean } = splitQuickReplies(m.content);
           const typing = streaming && i === msgs.length - 1 && !isUser;
           return (
-            <div key={m.id ?? i} className={isUser ? "flex justify-end" : ""}>
+            <motion.div
+              key={m.id ?? i}
+              initial={{ opacity: 0, y: 14, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={spring}
+              style={{ transformOrigin: isUser ? "bottom right" : "bottom left" }}
+              className={isUser ? "flex justify-end" : ""}
+            >
               {isUser ? (
-                <div className="max-w-[85%] rounded-2xl rounded-br-md bg-accent/15 px-3.5 py-2.5 text-sm text-ink">{m.content}</div>
+                <div className="max-w-[85%] rounded-2xl rounded-br-md bg-gradient-to-br from-accent/25 to-accent/10 px-3.5 py-2.5 text-sm text-ink ring-1 ring-accent/20">{m.content}</div>
               ) : (
                 <div className="space-y-3">
                   {(clean || typing) && (
                     <div className="flex gap-2.5">
-                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-2 text-accent">
-                        <Sparkles size={14} />
-                      </span>
+                      <CoachAvatar busy={typing} size={28} />
                       <div className="min-w-0 flex-1 pt-1 text-sm leading-relaxed text-ink-2">
-                        {clean ? <Markdown text={clean} /> : <span className="text-ink-3">Tänker…</span>}
+                        {clean ? (
+                          <Markdown text={clean} />
+                        ) : (
+                          <span className="inline-flex h-5 items-center rounded-full bg-surface-2 px-3 text-accent">
+                            <TypingDots />
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}
                   {m.program_draft && isValidDraft(m.program_draft) && (
-                    <div className={`card p-4 ${i === lastDraftIdx ? "border-accent/40" : "opacity-70"}`}>
+                    <motion.div
+                      initial={{ opacity: 0, y: 20, scale: 0.96 }}
+                      animate={{ opacity: i === lastDraftIdx ? 1 : 0.7, y: 0, scale: 1 }}
+                      transition={{ ...spring, delay: 0.05 }}
+                      className={`p-4 ${i === lastDraftIdx ? "card-glow" : "card"}`}
+                    >
                       {i !== lastDraftIdx && <div className="mb-2 text-xs uppercase tracking-wide text-ink-3">Tidigare version</div>}
                       <ProgramView draft={m.program_draft} initiallyOpen={i === lastDraftIdx} />
                       {i === lastDraftIdx && (
@@ -143,18 +166,30 @@ export default function CoachChat() {
                           <Check size={18} /> {chat.program_id ? "Uppdatera sparat program" : "Spara program"}
                         </button>
                       )}
-                    </div>
+                    </motion.div>
                   )}
                 </div>
               )}
-            </div>
+            </motion.div>
           );
         })}
-        {status && (
-          <div className="flex items-center gap-2 pl-9 text-sm text-ink-3">
-            <Loader2 size={15} className="animate-spin" /> {status}
-          </div>
-        )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {status && (
+            <motion.div
+              key="status"
+              initial={{ opacity: 0, x: -6 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0 }}
+              className="flex items-center gap-2 pl-9 text-sm text-ink-3"
+            >
+              <Loader2 size={15} className="animate-spin text-accent" />
+              <span className="bg-[linear-gradient(90deg,var(--color-ink-3),var(--color-ink),var(--color-ink-3))] bg-[length:200%_100%] bg-clip-text text-transparent [animation:var(--animate-shimmer)]">
+                {status}
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {error && <p className="rounded-xl bg-danger/10 p-3 text-sm text-danger">{error}</p>}
         {!streaming && last?.role === "user" && (
           <button className="btn-ghost w-full" onClick={() => send("", true)}>
@@ -164,14 +199,22 @@ export default function CoachChat() {
         <div ref={bottom} />
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md">
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-bg/80 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
         <div className="mx-auto max-w-2xl px-4 py-3">
           {quick.length > 0 && (
             <div className="-mx-4 mb-2 flex gap-2 overflow-x-auto px-4">
-              {quick.map((q) => (
-                <button key={q} onClick={() => send(q)} className="chip shrink-0 border-accent/50 py-1.5 text-sm text-ink">
+              {quick.map((q, i) => (
+                <motion.button
+                  key={q}
+                  initial={{ opacity: 0, y: 8, scale: 0.9 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ ...spring, delay: 0.1 + i * 0.05 }}
+                  whileTap={{ scale: 0.92 }}
+                  onClick={() => send(q)}
+                  className="chip shrink-0 border-accent/50 bg-accent/5 py-1.5 text-sm text-ink hover:bg-accent/15"
+                >
                   {q}
-                </button>
+                </motion.button>
               ))}
             </div>
           )}
@@ -195,21 +238,34 @@ export default function CoachChat() {
                 }
               }}
             />
-            <button className="btn-primary h-11 w-11 shrink-0 p-0" disabled={streaming || !input.trim()} aria-label="Skicka">
-              {streaming ? <Loader2 size={18} className="animate-spin" /> : <ArrowUp size={20} />}
-            </button>
+            <motion.button
+              className="btn-primary h-11 w-11 shrink-0 p-0"
+              disabled={streaming || !input.trim()}
+              aria-label="Skicka"
+              animate={{ scale: input.trim() && !streaming ? 1 : 0.9, rotate: streaming ? 0 : 0 }}
+              whileTap={{ scale: 0.85, y: -2 }}
+              transition={spring}
+            >
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.span
+                  key={streaming ? "l" : "a"}
+                  className="flex"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  {streaming ? <Loader2 size={18} className="animate-spin" /> : <ArrowUp size={20} />}
+                </motion.span>
+              </AnimatePresence>
+            </motion.button>
           </form>
         </div>
       </div>
 
-      {saving && (
-        <SaveDialog
-          draft={saving}
-          chat={chat}
-          onClose={() => setSaving(null)}
-          onSaved={(pid) => router.push(`/programs/${pid}`)}
-        />
-      )}
+      <Sheet open={!!saving} onClose={() => setSaving(null)} className="max-h-[88dvh] max-w-lg overflow-y-auto">
+        {saving && <SaveDialog draft={saving} chat={chat} onClose={() => setSaving(null)} onSaved={(pid) => router.push(`/programs/${pid}`)} />}
+      </Sheet>
     </main>
   );
 }
@@ -241,8 +297,7 @@ function SaveDialog({ draft, chat, onClose, onSaved }: { draft: ProgramDraft; ch
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 md:items-center" onClick={onClose}>
-      <div className="card max-h-[88dvh] w-full max-w-lg overflow-y-auto rounded-b-none p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+    <>
         <h2 className="text-lg font-bold">{chat.program_id ? "Uppdatera program" : "Spara program"}</h2>
         <p className="mt-1 text-sm text-ink-2">Varje dag blir en mall. Övningarna kopplas till dina befintliga där det går.</p>
 
@@ -293,7 +348,24 @@ function SaveDialog({ draft, chat, onClose, onSaved }: { draft: ProgramDraft; ch
             {busy ? "Sparar…" : "Spara"}
           </button>
         </div>
-      </div>
-    </div>
+    </>
+  );
+}
+
+function CoachAvatar({ busy, size }: { busy: boolean; size: number }) {
+  return (
+    <span className="relative flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
+      {busy && (
+        <motion.span
+          className="absolute inset-0 rounded-full"
+          style={{ background: "conic-gradient(from 0deg, transparent, var(--color-accent), transparent 60%)" }}
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+        />
+      )}
+      <span className="absolute inset-[1.5px] flex items-center justify-center rounded-full bg-surface-2 text-accent ring-1 ring-line">
+        <Sparkles size={Math.round(size * 0.45)} />
+      </span>
+    </span>
   );
 }

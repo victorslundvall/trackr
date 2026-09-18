@@ -1,12 +1,16 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
+import { motion } from "motion/react";
+
+const EASE = [0.16, 1, 0.3, 1] as const;
 
 type Pt = { x: number; y: number; label: string; value: string };
 
 /** Single-series line chart with crosshair + tooltip. x is a timestamp (ms). */
 export function LineChart({ points, height = 180, yUnit = "" }: { points: Pt[]; height?: number; yUnit?: string }) {
   const ref = useRef<SVGSVGElement>(null);
+  const gid = useId().replace(/:/g, "");
   const [hover, setHover] = useState<number | null>(null);
   const W = 360;
   const H = height;
@@ -74,9 +78,48 @@ export function LineChart({ points, height = 180, yUnit = "" }: { points: Pt[]; 
             {t.label}
           </text>
         ))}
-        <path d={d} fill="none" stroke="var(--color-accent)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        <defs>
+          <linearGradient id={`fill${gid}`} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.28} />
+            <stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <motion.path
+          d={`${d}L${sx(points[points.length - 1].x).toFixed(1)},${H - pad.b}L${sx(points[0].x).toFixed(1)},${H - pad.b}Z`}
+          fill={`url(#fill${gid})`}
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.8, delay: 0.5 }}
+        />
+        <motion.path
+          d={d}
+          fill="none"
+          stroke="var(--color-accent)"
+          strokeWidth={2.2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          initial={{ pathLength: 0 }}
+          whileInView={{ pathLength: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 1.1, ease: EASE }}
+        />
         {points.length <= 40 &&
-          points.map((p, i) => <circle key={i} cx={sx(p.x)} cy={sy(p.y)} r={2.5} fill="var(--color-accent)" stroke="var(--color-surface)" strokeWidth={2} />)}
+          points.map((p, i) => (
+            <motion.circle
+              key={i}
+              cx={sx(p.x)}
+              cy={sy(p.y)}
+              r={2.5}
+              fill="var(--color-accent)"
+              stroke="var(--color-surface)"
+              strokeWidth={2}
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.2 + (i / points.length) * 0.9 }}
+            />
+          ))}
         {hp && (
           <g>
             <line x1={sx(hp.x)} x2={sx(hp.x)} y1={pad.t} y2={H - pad.b} stroke="var(--color-ink-3)" strokeDasharray="3 3" />
@@ -133,7 +176,18 @@ export function BarChart({ bars, height = 160 }: { bars: { key: string; label: s
           return (
             <g key={b.key} onPointerEnter={() => setHover(i)} onPointerDown={() => setHover(i)}>
               <rect x={pad.l + i * bw} y={pad.t} width={bw} height={H - pad.t - pad.b} fill="transparent" />
-              {h > 0 && <path d={roundedTop(x, y, w, h, Math.min(4, w / 2))} fill={hover === i ? "var(--color-ink)" : "var(--color-accent)"} />}
+              {h > 0 && (
+                <motion.path
+                  d={roundedTop(x, y, w, h, Math.min(4, w / 2))}
+                  fill={hover === i ? "var(--color-ink)" : "var(--color-accent)"}
+                  style={{ transformBox: "fill-box", transformOrigin: "bottom" }}
+                  initial={{ scaleY: 0 }}
+                  whileInView={{ scaleY: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6, delay: i * 0.035, ease: EASE }}
+                  className="transition-[fill] duration-150"
+                />
+              )}
               {(bars.length <= 8 || i % Math.ceil(bars.length / 6) === (bars.length - 1) % Math.ceil(bars.length / 6)) && (
                 <text x={x + w / 2} y={H - 4} textAnchor="middle" fontSize={10} fill="var(--color-ink-3)">
                   {b.label}

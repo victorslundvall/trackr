@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { motion } from "motion/react";
 import { Settings2, Trophy } from "lucide-react";
+import { Collapse } from "@/components/motion";
 import { supabase } from "@/lib/supabase/client";
 import { BarChart, LineChart } from "@/components/Charts";
 import MuscleMap, { muscleColor, type MuscleState } from "@/components/MuscleMap";
@@ -128,19 +130,21 @@ export default function StatsPage() {
           Måndag–söndag. Hårda set per muskel (primär = 1, sekundär = 0,5) mot målet i din träningsfilosofi
           {settings ? ` – ${EXPERIENCE_LABEL[settings.experience].toLowerCase()}` : ""}.
         </p>
-        {editSettings && settings && (
-          <SettingsEditor
-            s={settings}
-            onSave={async (s) => {
-              setSettings(s);
-              setEditSettings(false);
-              await saveSettings(s);
-            }}
-          />
-        )}
+        <Collapse open={editSettings && !!settings}>
+          {settings && (
+            <SettingsEditor
+              s={settings}
+              onSave={async (s) => {
+                setSettings(s);
+                setEditSettings(false);
+                await saveSettings(s);
+              }}
+            />
+          )}
+        </Collapse>
         <MuscleMap data={muscleData} />
         <ul className="mt-4 space-y-2">
-          {targetRows.map((r) => (
+          {targetRows.map((r, i) => (
             <li key={r.m} className="grid grid-cols-[6.5rem_1fr_3.5rem] items-center gap-2 text-sm">
               <span className="truncate text-ink-2">
                 {muscleLabel(r.m)}
@@ -151,7 +155,14 @@ export default function StatsPage() {
                   className="absolute inset-y-0 rounded bg-ink-3/25"
                   style={{ left: `${(r.target!.min / maxBar) * 100}%`, width: `${((r.target!.max - r.target!.min) / maxBar) * 100}%` }}
                 />
-                <div className="absolute inset-y-0.5 left-0 rounded-sm" style={{ width: `${Math.min(100, ((r.sets ?? 0) / maxBar) * 100)}%`, background: muscleColor(r) }} />
+                <motion.div
+                  className="absolute inset-y-0.5 left-0 rounded-sm"
+                  style={{ background: muscleColor(r) }}
+                  initial={{ width: 0 }}
+                  whileInView={{ width: `${Math.min(100, ((r.sets ?? 0) / maxBar) * 100)}%` }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.8, delay: i * 0.04, ease: [0.16, 1, 0.3, 1] }}
+                />
               </div>
               <span className="text-right tabular-nums">
                 {num(r.sets ?? 0)}
@@ -170,7 +181,7 @@ export default function StatsPage() {
         {trends.length === 0 ? (
           <p className="text-sm text-ink-3">För lite data ännu.</p>
         ) : (
-          <ul className="divide-y divide-line">
+          <ul className="stagger divide-y divide-line">
             {trends.map((t) => (
               <li key={t.id}>
                 <Link href={`/exercises/${t.id}`} className="grid grid-cols-[1fr_4.5rem_4.5rem] items-center gap-2 py-2.5 text-sm hover:bg-surface-2/50">
@@ -208,10 +219,10 @@ export default function StatsPage() {
           <Trophy size={17} className="text-accent" /> Rekordtidslinje
         </h2>
         <p className="mb-3 text-xs text-ink-3">Pass där beräknat 1RM slog alla tidigare pass i övningen.</p>
-        <ol className="relative space-y-3 border-l border-line pl-4">
+        <ol className="stagger relative space-y-3 border-l border-line pl-4">
           {prs.slice(0, prLimit).map((p) => (
             <li key={p.exercise_id + p.workout_id} className="relative">
-              <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-accent ring-4 ring-surface" />
+              <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-accent shadow-[0_0_10px_var(--color-accent)] ring-4 ring-surface" />
               <div className="flex items-baseline justify-between gap-2 text-sm">
                 <Link href={`/exercises/${p.exercise_id}`} className="truncate font-medium hover:underline">
                   {names.get(p.exercise_id) ?? "…"}
@@ -243,13 +254,14 @@ export default function StatsPage() {
                 ["volume", "Volym"],
               ] as const
             ).map(([k, l]) => (
-              <button key={k} onClick={() => setMetric(k)} className={`chip whitespace-nowrap ${metric === k ? "border-ink bg-ink text-bg" : ""}`}>
-                {l}
+              <button key={k} onClick={() => setMetric(k)} className={`chip relative whitespace-nowrap ${metric === k ? "border-transparent text-bg" : ""}`}>
+                {metric === k && <motion.span layoutId="metric-pill" className="absolute inset-0 rounded-full bg-ink" transition={{ type: "spring", stiffness: 500, damping: 36 }} />}
+                <span className="relative">{l}</span>
               </button>
             ))}
           </div>
         </div>
-        <BarChart bars={bars} />
+        <BarChart key={metric} bars={bars} />
       </section>
 
       <section className="card p-4">
@@ -277,7 +289,18 @@ function Sparkline({ pts, up }: { pts: { t: number; y: number }[]; up: boolean }
     .join("");
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="mt-1 h-[18px] w-[120px]" aria-hidden>
-      <path d={d} fill="none" stroke={up ? "var(--color-accent)" : "var(--color-warm)"} strokeWidth={1.5} strokeLinejoin="round" />
+      <motion.path
+        d={d}
+        fill="none"
+        stroke={up ? "var(--color-accent)" : "var(--color-warm)"}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        initial={{ pathLength: 0 }}
+        whileInView={{ pathLength: 1 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+      />
     </svg>
   );
 }

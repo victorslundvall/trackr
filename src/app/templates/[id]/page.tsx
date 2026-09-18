@@ -9,6 +9,7 @@ import { activeWorkout, loadExercises, startWorkout } from "@/lib/data";
 import type { Exercise, Template, TemplateExercise } from "@/lib/types";
 import { muscleLabel, parseNum } from "@/lib/format";
 import ExercisePicker from "@/components/ExercisePicker";
+import { PageSkeleton } from "@/components/motion";
 
 type Item = TemplateExercise & { ex: Exercise };
 
@@ -74,7 +75,7 @@ export default function TemplateEditor() {
     router.push("/templates");
   }
 
-  if (!tpl) return <div className="py-20 text-center text-ink-3">Laddar…</div>;
+  if (!tpl) return <PageSkeleton />;
 
   return (
     <main className="space-y-4">

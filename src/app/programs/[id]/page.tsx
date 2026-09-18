@@ -9,6 +9,7 @@ import { activeWorkout, startWorkout } from "@/lib/data";
 import { parseRepRange } from "@/lib/progression";
 import type { ProgramDraft, ProgramProgress, WeekPlan } from "@/lib/coach/program";
 import ProgramView from "@/components/ProgramView";
+import { PageSkeleton } from "@/components/motion";
 
 type Row = {
   id: string;
@@ -62,7 +63,7 @@ export default function ProgramPage() {
   };
   useEffect(load, [id, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!p) return <div className="py-20 text-center text-ink-3">Laddar…</div>;
+  if (!p) return <PageSkeleton />;
 
   const draft: ProgramDraft = {
     name: p.name,

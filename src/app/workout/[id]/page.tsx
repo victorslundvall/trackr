@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, Check, Link2, ChevronLeft, MoreHorizontal, Plus, RefreshCw, StickyNote, Trash2, X } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { ArrowDown, ArrowUp, Link2, ChevronLeft, MoreHorizontal, Plus, RefreshCw, StickyNote, Trash2, X } from "lucide-react";
+import { Collapse, PageSkeleton, Sheet, easeOut, haptic, spring } from "@/components/motion";
 import { supabase } from "@/lib/supabase/client";
 import type { Exercise, SetType, Workout, WorkoutExercise, WorkoutSet } from "@/lib/types";
 import { lastSets, latestBodyweight, loadExercises } from "@/lib/data";
@@ -190,6 +192,7 @@ export default function WorkoutPage() {
       if (s.reps == null && ph?.reps != null) patch.reps = ph.reps;
     }
     editSet(s.id, patch, true);
+    haptic(15);
     // In a superset, rest only after the last exercise of the group.
     const g = b.we.superset_group;
     if (g != null) {
@@ -318,15 +321,16 @@ export default function WorkoutPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // ---------- render ----------
-  if (loading || !workout) return <div className="py-20 text-center text-ink-3">Laddar…</div>;
+  if (loading || !workout) return <PageSkeleton rows={3} />;
 
   const live = !workout.ended_at;
   const elapsed = live ? mmss((now - new Date(workout.started_at).getTime()) / 1000) : duration(workout.started_at, workout.ended_at);
   const doneSets = blocks.reduce((n, b) => n + b.sets.filter((s) => s.completed_at && s.set_type !== "warmup").length, 0);
+  const totalSets = blocks.reduce((n, b) => n + b.sets.filter((s) => s.set_type !== "warmup").length, 0);
 
   return (
-    <main className={rest ? "pb-24" : ""}>
-      <header className="sticky top-0 z-20 -mx-4 mb-4 flex items-center gap-2 border-b border-line bg-bg/90 px-4 py-3 backdrop-blur-md">
+    <main className={rest ? "pb-28" : ""}>
+      <header className="sticky top-0 z-20 -mx-4 mb-4 flex items-center gap-2 border-b border-line bg-bg/80 px-4 py-3 backdrop-blur-xl">
         <Link href={live ? "/" : "/history"} className="btn-ghost px-2.5" aria-label="Tillbaka">
           <ChevronLeft size={18} />
         </Link>
@@ -339,7 +343,11 @@ export default function WorkoutPage() {
           <div className="text-xs text-ink-3">
             {live ? (
               <>
-                <span className="tabular-nums text-accent">{elapsed}</span> · {doneSets} set klara
+                <span className="font-mono tabular-nums text-accent">{elapsed}</span> ·{" "}
+                <motion.span key={doneSets} initial={{ opacity: 0.4, y: -3 }} animate={{ opacity: 1, y: 0 }} className="inline-block tabular-nums">
+                  {doneSets}
+                </motion.span>
+                /{totalSets} set klara
               </>
             ) : (
               <>
@@ -352,9 +360,20 @@ export default function WorkoutPage() {
         <button className="btn-primary" onClick={() => setFinishing(true)}>
           {live ? "Avsluta" : "Klar"}
         </button>
+        {live && totalSets > 0 && (
+          <div className="absolute inset-x-0 -bottom-px h-[2px] bg-transparent">
+            <motion.div
+              className="h-full origin-left bg-gradient-to-r from-accent-2 to-accent shadow-[0_0_12px_var(--color-accent)]"
+              initial={false}
+              animate={{ scaleX: doneSets / totalSets }}
+              transition={spring}
+            />
+          </div>
+        )}
       </header>
 
       <div className="space-y-4">
+        <AnimatePresence initial={false}>
         {blocks.map((b, bi) => (
           <ExerciseBlock
             superset={supersetInfo(blocks, bi)}
@@ -384,6 +403,7 @@ export default function WorkoutPage() {
             onApply={() => applySuggestion(b)}
           />
         ))}
+        </AnimatePresence>
       </div>
 
       <button className="btn-ghost mt-4 w-full py-3.5" onClick={() => setPicker({})}>
@@ -402,16 +422,19 @@ export default function WorkoutPage() {
         />
       )}
 
+      <AnimatePresence>
       {rest && (
         <RestTimer
+          key="rest"
           endsAt={rest.endsAt}
           total={rest.total}
           onAdjust={(d) => setRest((r) => (r ? { endsAt: r.endsAt + d * 1000, total: Math.max(15, r.total + d) } : r))}
           onDone={() => setRest(null)}
         />
       )}
+      </AnimatePresence>
 
-      {finishing && <FinishDialog live={live} fromTemplate={!!workout.template_id} onCancel={() => setFinishing(false)} onFinish={finish} />}
+      <FinishDialog open={finishing} live={live} fromTemplate={!!workout.template_id} onCancel={() => setFinishing(false)} onFinish={finish} />
     </main>
   );
 }
@@ -453,8 +476,13 @@ function ExerciseBlock(props: {
   }, null);
 
   return (
-    <section
-      className={`card overflow-visible ${props.superset ? "border-l-4 border-l-sky-400" : ""} ${props.superset && !props.superset.last ? "-mb-3 rounded-b-none" : ""} ${props.superset && !props.superset.first ? "rounded-t-none" : ""}`}
+    <motion.section
+      layout="position"
+      initial={{ opacity: 0, y: 16, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.18 } }}
+      transition={spring}
+      className={`card overflow-visible ${props.menuOpen ? "relative z-20" : ""} ${props.superset ? "border-l-4 border-l-sky-400" : ""} ${props.superset && !props.superset.last ? "-mb-3 rounded-b-none" : ""} ${props.superset && !props.superset.first ? "rounded-t-none" : ""}`}
     >
       {props.superset && (
         <div className="px-4 pt-2 text-[11px] font-bold uppercase tracking-wide text-sky-300">
@@ -482,11 +510,21 @@ function ExerciseBlock(props: {
           <ProgressBadge result={props.progress} onApply={props.onApply} />
         </div>
         <div className="relative">
-          <button className="rounded-lg p-1.5 text-ink-2 hover:bg-surface-2" onClick={props.onMenu} aria-label="Meny">
-            <MoreHorizontal size={20} />
+          <button className={`rounded-lg p-1.5 transition ${props.menuOpen ? "bg-surface-2 text-ink" : "text-ink-2 hover:bg-surface-2"}`} onClick={props.onMenu} aria-label="Meny">
+            <motion.span className="flex" animate={{ rotate: props.menuOpen ? 90 : 0 }} transition={spring}>
+              <MoreHorizontal size={20} />
+            </motion.span>
           </button>
+          <AnimatePresence>
           {props.menuOpen && (
-            <div className="absolute right-0 top-9 z-30 w-52 overflow-hidden rounded-xl border border-line bg-surface-2 shadow-xl">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: -6 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -4, transition: { duration: 0.12 } }}
+              transition={spring}
+              style={{ transformOrigin: "top right" }}
+              className="absolute right-0 top-9 z-30 w-52 overflow-hidden rounded-xl border border-line bg-surface-2/95 shadow-2xl backdrop-blur-xl"
+            >
               <MenuItem icon={<RefreshCw size={16} />} onClick={props.onReplace}>Byt övning</MenuItem>
               <MenuItem icon={<ArrowUp size={16} />} onClick={() => props.onMove(-1)}>Flytta upp</MenuItem>
               <MenuItem icon={<ArrowDown size={16} />} onClick={() => props.onMove(1)}>Flytta ner</MenuItem>
@@ -497,12 +535,13 @@ function ExerciseBlock(props: {
               )}
               <MenuItem icon={<StickyNote size={16} />} onClick={() => { setShowNotes(true); props.onMenu(); }}>Anteckning</MenuItem>
               <MenuItem icon={<Trash2 size={16} />} onClick={props.onRemove} danger>Ta bort övning</MenuItem>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
         </div>
       </div>
 
-      {showNotes && (
+      <Collapse open={showNotes}>
         <div className="px-4 pt-2">
           <textarea
             className="input min-h-[2.5rem] text-sm"
@@ -512,7 +551,7 @@ function ExerciseBlock(props: {
             rows={1}
           />
         </div>
-      )}
+      </Collapse>
 
       <div className="mt-2 grid grid-cols-[2.25rem_1fr_4.5rem_4rem_2.75rem] items-center gap-x-2 px-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-ink-3">
         <span className="text-center">Set</span>
@@ -523,12 +562,14 @@ function ExerciseBlock(props: {
       </div>
 
       <ul>
+        <AnimatePresence initial={false}>
         {b.sets.map((s, idx) => {
           const ph = props.placeholderFor(b, idx);
           const type = SET_TYPES.find((t) => t.value === s.set_type)!;
           if (s.set_type !== "warmup") workNo++;
           const label = type.short || String(workNo);
           const done = !!s.completed_at;
+          const fresh = done && Date.now() - new Date(s.completed_at!).getTime() < 1500;
           const open = props.expanded === s.id;
           const prevTxt = ph
             ? cardio
@@ -538,7 +579,23 @@ function ExerciseBlock(props: {
                 : `${num(ph.weight)} × ${ph.reps ?? "–"}`
             : "–";
           return (
-            <li key={s.id} className={done ? "bg-accent/[0.07]" : ""}>
+            <motion.li
+              key={s.id}
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25, ease: easeOut }}
+              className={`relative overflow-hidden transition-colors duration-300 ${done ? "bg-accent/[0.07]" : ""}`}
+            >
+              {fresh && (
+                <motion.span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 origin-right bg-gradient-to-l from-accent/25 to-transparent"
+                  initial={{ scaleX: 0, opacity: 1 }}
+                  animate={{ scaleX: 1, opacity: 0 }}
+                  transition={{ duration: 0.7, ease: easeOut }}
+                />
+              )}
               <div className="grid grid-cols-[2.25rem_1fr_4.5rem_4rem_2.75rem] items-center gap-x-2 px-3 py-1.5">
                 <button
                   onClick={() => props.setExpanded(open ? null : s.id)}
@@ -568,29 +625,47 @@ function ExerciseBlock(props: {
                   placeholder={cardio ? (ph?.duration_seconds != null ? Math.round(ph.duration_seconds / 60) : null) : ph?.reps}
                   onChange={(v) => props.onEdit(s.id, cardio ? { duration_seconds: v == null ? null : Math.round(v * 60) } : { reps: v == null ? null : Math.round(v) })}
                 />
-                <button
-                  onClick={() => props.onToggle(b, idx)}
-                  className={`flex h-9 w-full items-center justify-center rounded-lg transition ${done ? "bg-accent text-accent-ink" : "bg-surface-2 text-ink-3 hover:text-ink"}`}
-                  aria-label={done ? "Markera som ej klar" : "Markera som klar"}
-                >
-                  <Check size={18} strokeWidth={3} />
-                </button>
+                <DoneButton done={done} fresh={fresh} onClick={() => props.onToggle(b, idx)} />
               </div>
-              {open && <SetDetails s={s} onEdit={props.onEdit} onDelete={() => props.onDeleteSet(s.id)} onClose={() => props.setExpanded(null)} />}
-            </li>
+              <Collapse open={open}>
+                <SetDetails s={s} onEdit={props.onEdit} onDelete={() => props.onDeleteSet(s.id)} onClose={() => props.setExpanded(null)} />
+              </Collapse>
+            </motion.li>
           );
         })}
+        </AnimatePresence>
       </ul>
-      <button className="w-full py-3 text-sm font-medium text-ink-2 hover:text-ink" onClick={props.onAddSet}>
+      <button className="w-full rounded-b-2xl py-3 text-sm font-medium text-ink-2 transition hover:bg-surface-2/60 hover:text-ink active:scale-[0.98]" onClick={props.onAddSet}>
         + Lägg till set
       </button>
-    </section>
+    </motion.section>
+  );
+}
+
+function DoneButton({ done, fresh, onClick }: { done: boolean; fresh: boolean; onClick: () => void }) {
+  return (
+    <motion.button
+      onClick={onClick}
+      whileTap={{ scale: 0.85 }}
+      animate={fresh ? { scale: [1, 1.18, 1] } : { scale: 1 }}
+      transition={{ duration: 0.35, ease: easeOut }}
+      className={`relative flex h-9 w-full items-center justify-center rounded-lg transition-colors duration-200 ${
+        done ? "bg-accent text-accent-ink shadow-[0_0_18px_-4px_var(--color-accent)]" : "bg-surface-2 text-ink-3 hover:text-ink"
+      }`}
+      aria-label={done ? "Markera som ej klar" : "Markera som klar"}
+      aria-pressed={done}
+    >
+      {fresh && <span key="ring" className="absolute inset-0 animate-ring rounded-lg" aria-hidden />}
+      <svg viewBox="0 0 24 24" width={19} height={19} fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <motion.path key={done ? "d" : "n"} d="M5 12.5l4.5 4.5L19 7.5" initial={{ pathLength: fresh ? 0 : 1 }} animate={{ pathLength: 1 }} transition={{ duration: 0.3, ease: easeOut, delay: done ? 0.05 : 0 }} />
+      </svg>
+    </motion.button>
   );
 }
 
 function MenuItem({ icon, children, onClick, danger }: { icon: React.ReactNode; children: React.ReactNode; onClick: () => void; danger?: boolean }) {
   return (
-    <button onClick={onClick} className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-line ${danger ? "text-danger" : ""}`}>
+    <button onClick={onClick} className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-line active:bg-line ${danger ? "text-danger" : ""}`}>
       {icon}
       {children}
     </button>
@@ -618,7 +693,7 @@ function NumInput({
   return (
     <input
       inputMode={decimal ? "decimal" : "numeric"}
-      className="h-9 w-full rounded-lg bg-surface-2 text-center font-semibold tabular-nums outline-none placeholder:font-normal placeholder:text-ink-3 focus:ring-2 focus:ring-accent"
+      className="h-9 w-full rounded-lg border border-transparent bg-surface-2 text-center font-semibold tabular-nums outline-none transition placeholder:font-normal placeholder:text-ink-3 focus:border-accent/60 focus:bg-bg focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-accent)_18%,transparent)]"
       value={text}
       placeholder={placeholder == null ? "" : String(Number(placeholder)).replace(".", ",")}
       onFocus={(e) => e.target.select()}
@@ -642,13 +717,13 @@ function SetDetails({
   onClose: () => void;
 }) {
   return (
-    <div className="mx-3 mb-2 space-y-3 rounded-xl border border-line bg-surface-2 p-3">
+    <div className="mx-3 mb-2 mt-1 space-y-3 rounded-xl border border-line bg-surface-2 p-3">
       <div className="flex flex-wrap gap-1.5">
         {SET_TYPES.map((t) => (
           <button
             key={t.value}
             onClick={() => onEdit(s.id, { set_type: t.value }, true)}
-            className={`chip ${s.set_type === t.value ? "border-accent bg-accent text-accent-ink" : ""}`}
+            className={`chip ${s.set_type === t.value ? "border-accent bg-accent font-semibold text-accent-ink" : ""}`}
           >
             {t.label}
           </button>
@@ -702,11 +777,13 @@ function DetailNum({ value, onChange }: { value: number | null; onChange: (v: nu
 }
 
 function FinishDialog({
+  open,
   live,
   fromTemplate,
   onCancel,
   onFinish,
 }: {
+  open: boolean;
   live: boolean;
   fromTemplate: boolean;
   onCancel: () => void;
@@ -715,8 +792,7 @@ function FinishDialog({
   const [asTemplate, setAsTemplate] = useState(false);
   const [busy, setBusy] = useState(false);
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 md:items-center" onClick={onCancel}>
-      <div className="card w-full max-w-md rounded-b-none p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+    <Sheet open={open} onClose={onCancel}>
         <h2 className="text-lg font-bold">{live ? "Avsluta passet?" : "Spara ändringar"}</h2>
         <p className="mt-1 text-sm text-ink-2">Tomma set tas bort automatiskt.</p>
         {!fromTemplate && (
@@ -735,11 +811,10 @@ function FinishDialog({
               await onFinish(asTemplate);
             }}
           >
-            {live ? "Avsluta" : "Klar"}
+            {busy ? "Sparar…" : live ? "Avsluta" : "Klar"}
           </button>
         </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }
 

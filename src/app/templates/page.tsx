@@ -38,7 +38,7 @@ export default function TemplatesPage() {
       <ul className="space-y-2">
         {rows.map((t) => (
           <li key={t.id}>
-            <Link href={`/templates/${t.id}`} className="card flex items-center gap-3 p-4 hover:border-ink-3">
+            <Link href={`/templates/${t.id}`} className="card interactive flex items-center gap-3 p-4">
               <div className="min-w-0 flex-1">
                 <div className="font-semibold">{t.name}</div>
                 <div className="mt-1 line-clamp-2 text-sm text-ink-3">

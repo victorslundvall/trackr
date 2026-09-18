@@ -30,7 +30,7 @@ export default function MorePage() {
   return (
     <main className="space-y-5">
       <h1 className="h1">Mer</h1>
-      <ul className="card divide-y divide-line">
+      <ul className="card stagger divide-y divide-line overflow-hidden">
         {links.map(({ href, label, icon: Icon }) => (
           <li key={href}>
             <Link href={href} className="flex items-center gap-3 px-4 py-3.5 hover:bg-surface-2">

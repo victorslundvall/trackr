@@ -14,6 +14,7 @@ import { STATUS_STYLE, StatusIcon } from "@/components/ProgressBadge";
 import { loadProgression, loadSettings, saveSetting, type ExerciseSetting } from "@/lib/progress-data";
 import type { PResult } from "@/lib/progression";
 import { parseNum } from "@/lib/format";
+import { PageSkeleton } from "@/components/motion";
 
 type Session = { id: string; name: string; started_at: string; workout_exercises: { id: string; sets: WorkoutSet[] }[] };
 const RANGES = [
@@ -72,7 +73,7 @@ export default function ExerciseDetail() {
       }));
   }, [series, range]);
 
-  if (!ex) return <div className="py-20 text-center text-ink-3">Laddar…</div>;
+  if (!ex) return <PageSkeleton />;
 
   const best = series.reduce((m, s) => Math.max(m, Number(s.e1rm)), 0);
   const recent = series.length ? Number(series[series.length - 1].e1rm) : null;
