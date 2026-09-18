@@ -262,3 +262,11 @@ input[type="number"] {
     transform: none;
   }
 }
+
+/* muscle map: parts pop in, then colours/dim transition smoothly */
+.muscle-in {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: fill 0.5s ease, opacity 0.25s ease, stroke 0.2s ease;
+  animation: heat-in 0.55s var(--ease-out-expo) backwards;
+}
