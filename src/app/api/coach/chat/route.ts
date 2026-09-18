@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { serverSupabase } from "@/lib/supabase/server";
-import { COACH_SYSTEM, profileText } from "@/lib/coach/knowledge";
+import { COACH_ROLE, DEFAULT_PRINCIPLES, profileText, renderPhilosophy, type Principle } from "@/lib/coach/knowledge";
 import { historySummary } from "@/lib/coach/context";
 import { PROPOSE_PROGRAM_TOOL, PROPOSE_PROGRAM_TOOL_STRICT, draftProblem, isValidDraft, normalizeDraft, type ProgramDraft } from "@/lib/coach/program";
 
@@ -44,6 +44,11 @@ export async function POST(req: Request) {
   }
   if (!msgs.length || msgs[0].role !== "user") return Response.json({ error: "Tom konversation." }, { status: 400 });
 
+  // The user's own philosophy (edited under Coach → Filosofi) replaces the defaults.
+  const { data: phil } = await sb.from("coach_philosophy").select("principles").maybeSingle();
+  const principles = Array.isArray(phil?.principles) && phil.principles.length ? (phil.principles as Principle[]) : DEFAULT_PRINCIPLES;
+  const systemText = `${COACH_ROLE}\n\n${renderPhilosophy(principles)}`;
+
   const profile = (chat.profile ?? {}) as Record<string, unknown>;
   const ctx: string[] = [profileText(profile)];
   if (profile.use_history !== false) {
@@ -80,7 +85,7 @@ export async function POST(req: Request) {
             max_tokens: 32000,
             output_config: { effort: "medium" as const },
             system: [
-              { type: "text" as const, text: COACH_SYSTEM, cache_control: { type: "ephemeral" as const } },
+              { type: "text" as const, text: systemText, cache_control: { type: "ephemeral" as const } },
               { type: "text" as const, text: ctx.join("\n\n") },
             ],
             tools: [useStrict ? PROPOSE_PROGRAM_TOOL_STRICT : PROPOSE_PROGRAM_TOOL],
