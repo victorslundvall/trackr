@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0b0d10;
+  --color-surface: #14171c;
+  --color-surface-2: #1c2027;
+  --color-line: #262b33;
+  --color-ink: #eef1f5;
+  --color-ink-2: #a3acb9;
+  --color-ink-3: #6b7482;
+  --color-accent: #c8f560;
+  --color-accent-ink: #11160a;
+  --color-danger: #ff6b6b;
+  --color-warm: #ffb347;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+  font-feature-settings: "tnum" 1, "cv11" 1;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+@utility card {
+  @apply rounded-2xl border border-line bg-surface;
+}
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-50;
+}
+@utility btn-primary {
+  @apply btn bg-accent text-accent-ink hover:brightness-105;
+}
+@utility btn-ghost {
+  @apply btn bg-surface-2 text-ink hover:bg-line;
+}
+@utility btn-danger {
+  @apply btn bg-danger/15 text-danger hover:bg-danger/25;
+}
+@utility input {
+  @apply w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-ink placeholder:text-ink-3 outline-none focus:border-accent;
+}
+@utility label {
+  @apply mb-1 block text-xs font-medium uppercase tracking-wide text-ink-3;
+}
+@utility chip {
+  @apply inline-flex items-center rounded-full border border-line px-2.5 py-1 text-xs text-ink-2;
+}
+@utility h1 {
+  @apply text-2xl font-bold tracking-tight;
+}

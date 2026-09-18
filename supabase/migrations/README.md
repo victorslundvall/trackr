@@ -1,0 +1,23 @@
+# Databas
+
+Schemat är redan applicerat på Supabase-projektet **Trackr** (`msdxfjfasvhqnmeurqjg`, eu-north-1).
+Migreringarna finns i projektet under *Database → Migrations*:
+
+1. `init_schema` – tabeller (`exercises`, `workouts`, `workout_exercises`, `sets`, `templates`, `template_exercises`, `body_metrics`), index och RLS (varje användare ser bara sina egna rader; globala övningar med `user_id = null` är läsbara för alla inloggade).
+2. `stats_functions` – `exercise_e1rm_series`, `exercise_rep_prs`, `weekly_muscle_sets`, `weekly_summary`, `last_sets`, `exercise_usage` (alla `security invoker`, så RLS gäller).
+3. `we_exercise_fk_index` – index för FK.
+
+Övningsbiblioteket (753 övningar, stretching exkluderat) är seedat från
+[free-exercise-db](https://github.com/yuhonas/free-exercise-db) (public domain). Bilder laddas från GitHub.
+
+Datamodell i korthet:
+
+```
+workouts 1─* workout_exercises *─1 exercises
+                    1
+                    *
+                  sets   (set_type, weight, reps, rpe, rir, tempo, rest_seconds,
+                          bodyweight, extra_weight, distance_km, duration_seconds, note)
+templates 1─* template_exercises *─1 exercises
+body_metrics
+```
