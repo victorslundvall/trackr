@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BookOpen, ChevronRight, MessageSquare, Plus, Sparkles } from "lucide-react";
+import { BookOpen, ChevronRight, FileUp, MessageSquare, Plus, Sparkles } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { dateLabel } from "@/lib/format";
 
@@ -35,6 +35,15 @@ export default function CoachHome() {
           <div className="text-sm text-ink-2">Fyll i några grunder – coachen frågar resten</div>
         </div>
         <Plus size={20} className="text-accent" />
+      </Link>
+
+      <Link href="/coach/import" className="card flex items-center gap-3 p-4 hover:border-ink-3">
+        <FileUp size={19} className="text-ink-2" />
+        <div className="flex-1">
+          <div className="font-medium">Importera program</div>
+          <div className="text-sm text-ink-3">Från PDF, bild, kalkylark eller text</div>
+        </div>
+        <ChevronRight size={16} className="text-ink-3" />
       </Link>
 
       <Link href="/coach/philosophy" className="card flex items-center gap-3 p-4 hover:border-ink-3">

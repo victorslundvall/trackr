@@ -24,3 +24,7 @@ workouts 1─* workout_exercises *─1 exercises
 templates 1─* template_exercises *─1 exercises
 body_metrics
 ```
+
+Senare migreringar:
+7. `coach_philosophy` – `coach_philosophy` (principer per användare) och `coach_philosophy_suggestions` (förslag från den kvartalsvisa forskningsuppgiften).
+8. `stats_tools_ai` – `user_settings` (nivå, fokusmuskler), `workouts.ai_comment`, `template_exercises.superset_group`, `block_reports`; RPC `daily_sets`, `session_bests`, `pr_timeline`, `block_stats`.

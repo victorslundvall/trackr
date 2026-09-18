@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, Check, ChevronLeft, MoreHorizontal, Plus, RefreshCw, StickyNote, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Link2, ChevronLeft, MoreHorizontal, Plus, RefreshCw, StickyNote, Trash2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import type { Exercise, SetType, Workout, WorkoutExercise, WorkoutSet } from "@/lib/types";
 import { lastSets, latestBodyweight, loadExercises } from "@/lib/data";
@@ -190,8 +190,37 @@ export default function WorkoutPage() {
       if (s.reps == null && ph?.reps != null) patch.reps = ph.reps;
     }
     editSet(s.id, patch, true);
+    // In a superset, rest only after the last exercise of the group.
+    const g = b.we.superset_group;
+    if (g != null) {
+      const members = blocks.filter((x) => x.we.superset_group === g);
+      if (members[members.length - 1]?.we.id !== b.we.id) return;
+    }
     const secs = s.rest_seconds ?? DEFAULT_REST;
     if (!workout?.ended_at) setRest({ endsAt: Date.now() + secs * 1000, total: secs });
+  }
+
+  async function toggleSuperset(weId: string) {
+    setMenu(null);
+    const i = blocks.findIndex((b) => b.we.id === weId);
+    const cur = blocks[i];
+    let updates: { id: string; g: number | null }[];
+    if (cur.we.superset_group != null) {
+      updates = blocks.filter((b) => b.we.superset_group === cur.we.superset_group).map((b) => ({ id: b.we.id, g: null }));
+    } else {
+      const next = blocks[i + 1];
+      if (!next) return;
+      const g = next.we.superset_group ?? Math.max(0, ...blocks.map((b) => b.we.superset_group ?? 0)) + 1;
+      updates = [
+        { id: cur.we.id, g },
+        { id: next.we.id, g },
+      ];
+    }
+    setBlocks((bs) => bs.map((b) => {
+      const u = updates.find((x) => x.id === b.we.id);
+      return u ? { ...b, we: { ...b.we, superset_group: u.g } } : b;
+    }));
+    await Promise.all(updates.map((u) => sb.from("workout_exercises").update({ superset_group: u.g }).eq("id", u.id)));
   }
 
   async function addExercises(exs: Exercise[]) {
@@ -326,8 +355,11 @@ export default function WorkoutPage() {
       </header>
 
       <div className="space-y-4">
-        {blocks.map((b) => (
+        {blocks.map((b, bi) => (
           <ExerciseBlock
+            superset={supersetInfo(blocks, bi)}
+            hasNext={bi < blocks.length - 1}
+            onSuperset={() => toggleSuperset(b.we.id)}
             key={b.we.id}
             b={b}
             bodyweight={bodyweight}
@@ -405,6 +437,9 @@ function ExerciseBlock(props: {
   progress?: PResult;
   target?: Target;
   onApply: () => void;
+  superset: { label: string; first: boolean; last: boolean } | null;
+  hasNext: boolean;
+  onSuperset: () => void;
 }) {
   const { b } = props;
   const cardio = isCardio(b.ex);
@@ -418,7 +453,15 @@ function ExerciseBlock(props: {
   }, null);
 
   return (
-    <section className="card overflow-visible">
+    <section
+      className={`card overflow-visible ${props.superset ? "border-l-4 border-l-sky-400" : ""} ${props.superset && !props.superset.last ? "-mb-3 rounded-b-none" : ""} ${props.superset && !props.superset.first ? "rounded-t-none" : ""}`}
+    >
+      {props.superset && (
+        <div className="px-4 pt-2 text-[11px] font-bold uppercase tracking-wide text-sky-300">
+          Superset {props.superset.label}
+          {!props.superset.last && <span className="ml-1 font-normal normal-case text-ink-3">– kör nästa övning direkt, vila efter sista</span>}
+        </div>
+      )}
       <div className="flex items-start gap-2 px-4 pt-3.5">
         <div className="min-w-0 flex-1">
           <Link href={`/exercises/${b.ex.id}`} className="font-semibold text-accent hover:underline">
@@ -447,6 +490,11 @@ function ExerciseBlock(props: {
               <MenuItem icon={<RefreshCw size={16} />} onClick={props.onReplace}>Byt övning</MenuItem>
               <MenuItem icon={<ArrowUp size={16} />} onClick={() => props.onMove(-1)}>Flytta upp</MenuItem>
               <MenuItem icon={<ArrowDown size={16} />} onClick={() => props.onMove(1)}>Flytta ner</MenuItem>
+              {(props.superset || props.hasNext) && (
+                <MenuItem icon={<Link2 size={16} />} onClick={props.onSuperset}>
+                  {props.superset ? "Lös upp superset" : "Superset med nästa"}
+                </MenuItem>
+              )}
               <MenuItem icon={<StickyNote size={16} />} onClick={() => { setShowNotes(true); props.onMenu(); }}>Anteckning</MenuItem>
               <MenuItem icon={<Trash2 size={16} />} onClick={props.onRemove} danger>Ta bort övning</MenuItem>
             </div>
@@ -693,4 +741,15 @@ function FinishDialog({
       </div>
     </div>
   );
+}
+
+function supersetInfo(blocks: Block[], i: number) {
+  const g = blocks[i].we.superset_group;
+  if (g == null) return null;
+  const groups = [...new Set(blocks.map((b) => b.we.superset_group).filter((x): x is number => x != null))];
+  return {
+    label: String.fromCharCode(65 + groups.indexOf(g)),
+    first: blocks[i - 1]?.we.superset_group !== g,
+    last: blocks[i + 1]?.we.superset_group !== g,
+  };
 }

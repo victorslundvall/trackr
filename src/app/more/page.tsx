@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ChevronRight, ClipboardList, LogOut, Ruler, TrendingUp, Upload } from "lucide-react";
+import { Calculator, ChevronRight, ClipboardList, FileUp, LogOut, Ruler, TrendingUp, Upload } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 
 const links = [
+  { href: "/tools", label: "Verktyg (1RM, kalorier)", icon: Calculator },
   { href: "/progress", label: "Progression", icon: TrendingUp },
+  { href: "/coach/import", label: "Importera program (PDF, bild, kalkylark)", icon: FileUp },
   { href: "/templates", label: "Mallar", icon: ClipboardList },
   { href: "/body", label: "Kroppsmått", icon: Ruler },
   { href: "/import", label: "Importera från StrengthLog", icon: Upload },

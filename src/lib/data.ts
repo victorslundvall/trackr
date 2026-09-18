@@ -75,7 +75,7 @@ export async function updateExercise(id: string, fields: Partial<Exercise>) {
 export async function startWorkout(templateId?: string) {
   const sb = supabase();
   let name = defaultWorkoutName();
-  let tplExercises: { exercise_id: string; target_sets: number; target_reps: string | null; target_rpe: number | null; notes: string | null }[] = [];
+  let tplExercises: { exercise_id: string; target_sets: number; target_reps: string | null; target_rpe: number | null; notes: string | null; superset_group?: number | null }[] = [];
   if (templateId) {
     const [{ data: tpl }, { data: te }] = await Promise.all([
       sb.from("templates").select("name").eq("id", templateId).single(),
@@ -90,7 +90,7 @@ export async function startWorkout(templateId?: string) {
   for (const [i, te] of tplExercises.entries()) {
     const { data: we } = await sb
       .from("workout_exercises")
-      .insert({ workout_id: w.id, exercise_id: te.exercise_id, position: i, notes: te.notes })
+      .insert({ workout_id: w.id, exercise_id: te.exercise_id, position: i, notes: te.notes, superset_group: te.superset_group ?? null })
       .select("id")
       .single();
     if (!we) continue;

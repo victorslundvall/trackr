@@ -15,7 +15,7 @@ const items = [
 
 export default function Nav() {
   const path = usePathname();
-  if (path.startsWith("/login") || path.startsWith("/workout/") || (/^\/coach\/[^/]+$/.test(path) && !["/coach/new", "/coach/philosophy"].includes(path))) return null;
+  if (path.startsWith("/login") || path.startsWith("/workout/") || (/^\/coach\/[^/]+$/.test(path) && !["/coach/new", "/coach/philosophy", "/coach/import"].includes(path))) return null;
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-bg/90 backdrop-blur-md pb-[env(safe-area-inset-bottom)]">
       <ul className="mx-auto grid max-w-2xl grid-cols-6">

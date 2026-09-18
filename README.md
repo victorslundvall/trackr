@@ -43,6 +43,14 @@ npm run dev
 
 Kräver `ANTHROPIC_API_KEY` i `.env.local` (och i Vercel). Valfritt: `COACH_MODEL` för att byta modell.
 
+## Statistik, verktyg och AI (v0.4)
+
+- **Statistik:** muskelkarta (fram/bak) och volym mot mål för veckan (mål från nivå + fokusmuskler, ändras under "Mål"), styrketrend %/mån med prognos 3 mån, rekordtidslinje, heatmap 12 mån.
+- **Verktyg** (Mer → Verktyg): 1RM (Epley, Brzycki, snitt) med %-tabell, TDEE (Mifflin-St Jeor), kg/lbs.
+- **AI:** kommentar efter varje pass (sparas på passet), automatisk blockrapport när ett block i aktivt program är klart, programimport från PDF/bild/.xlsx/.csv/text (Coach → Importera program).
+- **Supersets:** ⋯ på en övning → "Superset med nästa". Vilotimern startar efter sista övningen i supersetet.
+- **PWA:** installera via Safari → Dela → Lägg till på hemskärmen.
+
 ## Struktur
 
 ```

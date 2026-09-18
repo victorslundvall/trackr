@@ -45,7 +45,14 @@ export default function ProgramView({ draft, initiallyOpen = false }: { draft: P
                   {d.exercises.map((e, j) => (
                     <li key={j} className="px-3.5 py-2.5">
                       <div className="flex items-baseline justify-between gap-3">
-                        <span className="font-medium">{e.name}</span>
+                        <span className="font-medium">
+                          {e.superset_group != null && (
+                            <span className="mr-1.5 rounded bg-sky-400/15 px-1.5 py-0.5 text-[10px] font-bold text-sky-300">
+                              SS{String.fromCharCode(64 + Math.max(1, e.superset_group))}
+                            </span>
+                          )}
+                          {e.name}
+                        </span>
                         <span className="shrink-0 text-sm tabular-nums text-ink-2">
                           {e.sets} × {e.rep_min === e.rep_max ? e.rep_min : `${e.rep_min}–${e.rep_max}`}
                           {e.rir ? <span className="text-ink-3"> · {e.rir} RIR</span> : null}

@@ -34,6 +34,7 @@ type Tpl = {
     target_weight: number | null;
     rationale: string | null;
     notes: string | null;
+    superset_group: number | null;
     exercises: { name: string; primary_muscles: string[]; secondary_muscles: string[]; equipment: string | null } | null;
   }[];
 };
@@ -46,16 +47,18 @@ export default function ProgramPage() {
   const [prog, setProg] = useState<ProgramProgress | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [reports, setReports] = useState<{ block_index: number; created_at: string }[]>([]);
 
   const load = () => {
     const sb = supabase();
     sb.from("programs").select("*").eq("id", id).single().then(({ data }) => (data ? setP(data) : router.replace("/coach")));
     sb.from("templates")
-      .select("id,name,notes,day_index,template_exercises(position,target_sets,target_reps,target_rir,target_weight,rationale,notes,exercises(name,primary_muscles,secondary_muscles,equipment))")
+      .select("id,name,notes,day_index,template_exercises(position,target_sets,target_reps,target_rir,target_weight,rationale,notes,superset_group,exercises(name,primary_muscles,secondary_muscles,equipment))")
       .eq("program_id", id)
       .order("day_index")
       .then(({ data }) => setTpls((data ?? []) as unknown as Tpl[]));
     sb.rpc("program_progress", { p_program: id }).then(({ data }) => setProg(((data ?? [])[0] as ProgramProgress) ?? null));
+    sb.from("block_reports").select("block_index,created_at").eq("program_id", id).order("block_index", { ascending: false }).then(({ data }) => setReports(data ?? []));
   };
   useEffect(load, [id, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -87,6 +90,7 @@ export default function ProgramPage() {
             start_weight: te.target_weight,
             rationale: te.rationale,
             notes: te.notes,
+            superset_group: te.superset_group,
           };
         }),
     })),
@@ -148,6 +152,22 @@ export default function ProgramPage() {
       <section className="card p-4">
         <ProgramView draft={draft} />
       </section>
+
+      {reports.length > 0 && (
+        <section className="space-y-2">
+          <div className="text-xs font-medium uppercase tracking-wide text-ink-3">Blockrapporter</div>
+          <ul className="card divide-y divide-line">
+            {reports.map((r) => (
+              <li key={r.block_index}>
+                <Link href={`/programs/${id}/report/${r.block_index}`} className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-surface-2">
+                  <span>Block {r.block_index + 1}</span>
+                  <span className="text-ink-3">{new Date(r.created_at).toLocaleDateString("sv-SE", { day: "numeric", month: "short" })}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="space-y-2">
         <div className="text-xs font-medium uppercase tracking-wide text-ink-3">Mallar (redigera eller starta valfri dag)</div>

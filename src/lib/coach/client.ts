@@ -176,6 +176,7 @@ export async function saveProgram(opts: {
       target_weight: e.start_weight ?? null,
       rationale: e.rationale ?? null,
       notes: e.notes ?? null,
+      superset_group: e.superset_group ?? null,
     }));
     const { error: e2 } = await sb.from("template_exercises").insert(rows);
     if (e2) throw e2;

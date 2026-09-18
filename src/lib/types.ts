@@ -35,6 +35,7 @@ export interface WorkoutExercise {
   exercise_id: string;
   position: number;
   notes: string | null;
+  superset_group?: number | null;
 }
 
 export interface WorkoutSet {

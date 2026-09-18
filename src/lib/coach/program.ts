@@ -10,6 +10,7 @@ export interface ProgramExercise {
   start_weight?: number | null;
   rationale?: string | null;
   notes?: string | null;
+  superset_group?: number | null;
 }
 export interface ProgramDay {
   name: string;
@@ -89,6 +90,7 @@ export const PROPOSE_PROGRAM_TOOL = {
                   start_weight: { type: "number", description: "Föreslagen startvikt i kg (utelämna om okänt)" },
                   rationale: { type: "string" },
                   notes: { type: "string", description: "Teknik/utförande, t.ex. 'lengthened partials sista setet'" },
+                  superset_group: { type: "integer", description: "Samma nummer på övningar (i följd, samma dag) som körs som superset. Utelämna annars." },
                 },
               },
             },

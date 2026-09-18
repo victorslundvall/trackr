@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Trophy } from "lucide-react";
+import { Sparkles, Trophy } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { loadExercises } from "@/lib/data";
 import { loadProgression } from "@/lib/progress-data";
@@ -21,6 +21,8 @@ export default function WorkoutSummary() {
   const [prs, setPrs] = useState<PR[]>([]);
   const [progress, setProgress] = useState<Map<string, PResult>>(new Map());
   const [exMap, setExMap] = useState<Map<string, Exercise>>(new Map());
+  const [comment, setComment] = useState<string | null>(null);
+  const [progLoaded, setProgLoaded] = useState(false);
 
   useEffect(() => {
     const sb = supabase();
@@ -43,6 +45,16 @@ export default function WorkoutSummary() {
       });
       // include this workout – this is "what happens next time"
       setProgress(await loadProgression({ exerciseIds: rows.map((r) => r.exercise_id) }));
+      setProgLoaded(true);
+      // AI comment (cached on the workout)
+      if (w?.ai_comment) setComment(w.ai_comment);
+      else {
+        setComment("…");
+        fetch("/api/coach/workout-comment", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workoutId: id }) })
+          .then((r) => r.json())
+          .then((j) => setComment(j.comment ?? null))
+          .catch(() => setComment(null));
+      }
     })();
   }, [id]);
 
@@ -66,6 +78,19 @@ export default function WorkoutSummary() {
         <Tile v={String(stats.sets)} l="Arbetsset" />
         <Tile v={`${num(stats.volume / 1000, 1)} t`} l="Volym" />
       </div>
+
+      {comment && (
+        <section className="card border-accent/40 p-4">
+          <h2 className="mb-2 flex items-center gap-2 font-semibold">
+            <Sparkles size={17} className="text-accent" /> Coachens kommentar
+          </h2>
+          {comment === "…" ? (
+            <p className="text-sm text-ink-3">Coachen tittar på passet…</p>
+          ) : (
+            <p className="text-sm leading-relaxed text-ink-2">{comment}</p>
+          )}
+        </section>
+      )}
 
       <section className="card p-4">
         <h2 className="mb-3 flex items-center gap-2 font-semibold">
@@ -110,7 +135,7 @@ export default function WorkoutSummary() {
               <p className="mt-0.5 text-sm text-ink-3">{r!.reason}</p>
             </li>
           ))}
-          {next.length === 0 && <li className="text-sm text-ink-3">Laddar…</li>}
+          {next.length === 0 && <li className="text-sm text-ink-3">{progLoaded ? "För lite historik för förslag ännu." : "Laddar…"}</li>}
         </ul>
       </section>
 

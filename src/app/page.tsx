@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Play, Plus } from "lucide-react";
+import { Play, Plus, Sparkles } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { activeWorkout, loadExercises, startWorkout } from "@/lib/data";
 import { loadProgression } from "@/lib/progress-data";
@@ -25,6 +25,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [prog, setProg] = useState<{ name: string; id: string; r: PResult }[] | null>(null);
+  const [report, setReport] = useState<{ programId: string; block: number } | null>(null);
   const [program, setProgram] = useState<{
     id: string;
     name: string;
@@ -48,6 +49,24 @@ export default function Home() {
         ]);
         const progress = ((pr ?? [])[0] ?? null) as ProgramProgress | null;
         setProgram({ ...p, progress, templates: tpls ?? [] });
+        // Block finished? Make sure its report exists (created automatically), then show it for a week.
+        if (progress && progress.days > 0) {
+          const size = progress.days * Math.max(1, progress.weeks ?? 1);
+          const lastDone = Math.floor(progress.completed / size) - 1;
+          if (lastDone >= 0) {
+            const { data: rep } = await sb.from("block_reports").select("block_index,created_at").eq("program_id", p.id).eq("block_index", lastDone).maybeSingle();
+            const r =
+              rep ??
+              (
+                await fetch("/api/coach/block-report", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ programId: p.id, blockIndex: lastDone }),
+                }).then((x) => x.json())
+              ).report;
+            if (r && Date.now() - new Date(r.created_at).getTime() < 7 * 864e5) setReport({ programId: p.id, block: r.block_index });
+          }
+        }
       });
     sb.from("workouts")
       .select("*, workout_exercises(sets(count))")
@@ -108,6 +127,16 @@ export default function Home() {
         <button className="btn-primary w-full py-4 text-base" onClick={() => start()} disabled={busy}>
           <Plus size={20} /> Starta tomt pass
         </button>
+      )}
+
+      {report && (
+        <Link href={`/programs/${report.programId}/report/${report.block}`} className="card flex items-center gap-3 border-accent/40 bg-accent/10 p-4">
+          <Sparkles size={20} className="text-accent" />
+          <div className="flex-1">
+            <div className="font-semibold">Block {report.block + 1} klart – se rapporten</div>
+            <div className="text-sm text-ink-2">Styrka, volym och coachens förslag inför nästa block</div>
+          </div>
+        </Link>
       )}
 
       {program && !active && (() => {
