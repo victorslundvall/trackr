@@ -8,6 +8,8 @@ import { Collapse } from "@/components/motion";
 import { supabase } from "@/lib/supabase/client";
 import { BarChart, LineChart } from "@/components/Charts";
 import MuscleMap, { muscleColor, type MuscleState } from "@/components/MuscleMap";
+import VolumeZones from "@/components/VolumeZones";
+import { effectiveTarget, estimateZones, type FeedbackRow, type Zone } from "@/lib/zones";
 import Heatmap from "@/components/Heatmap";
 import { MUSCLES, dateLabel, muscleLabel, num } from "@/lib/format";
 import { loadExercises } from "@/lib/data";
@@ -38,6 +40,7 @@ export default function StatsPage() {
   const [editSettings, setEditSettings] = useState(false);
   const [metric, setMetric] = useState<"workouts" | "sets" | "volume">("sets");
   const [prLimit, setPrLimit] = useState(10);
+  const [zones, setZones] = useState<Map<string, Zone>>(new Map());
 
   useEffect(() => {
     sb.rpc("weekly_summary", { p_weeks: WEEKS }).then(({ data }) => setWeeks(data ?? []));
@@ -52,6 +55,7 @@ export default function StatsPage() {
       .then(({ data }) => setBw((data ?? []) as { measured_at: string; bodyweight: number }[]));
     loadExercises().then((ex) => setNames(new Map(ex.map((e) => [e.id, e.name]))));
     loadSettings().then(setSettings);
+    sb.rpc("muscle_feedback_history", { p_weeks: 26 }).then(({ data }) => setZones(estimateZones((data ?? []) as FeedbackRow[])));
   }, [sb]);
 
   // ---- volume vs target (current Monday–Sunday) ----
@@ -61,10 +65,12 @@ export default function StatsPage() {
     if (!settings) return out;
     for (const m of Object.keys(MUSCLES)) {
       const sets = Number(muscleRows.find((r) => r.week === thisWeek && r.muscle === m)?.sets ?? 0);
-      out[m] = { sets, target: volumeTarget(m, settings) };
+      const t = effectiveTarget(zones.get(m), volumeTarget(m, settings));
+      out[m] = { sets, target: t ? { min: t.min, max: t.max } : null };
     }
     return out;
-  }, [muscleRows, settings, thisWeek]);
+  }, [muscleRows, settings, thisWeek, zones]);
+  const personal = (m: string) => effectiveTarget(zones.get(m), null)?.personal;
 
   // ---- weekly bars ----
   const bars = Array.from({ length: WEEKS }, (_, i) => mondayKey(WEEKS - 1 - i)).map((k) => {
@@ -152,7 +158,7 @@ export default function StatsPage() {
               </span>
               <div className="relative h-3.5 rounded bg-surface-2">
                 <div
-                  className="absolute inset-y-0 rounded bg-ink-3/25"
+                  className={`absolute inset-y-0 rounded ${personal(r.m) ? "bg-sky/25" : "bg-ink-3/25"}`}
                   style={{ left: `${(r.target!.min / maxBar) * 100}%`, width: `${((r.target!.max - r.target!.min) / maxBar) * 100}%` }}
                 />
                 <motion.div
@@ -166,13 +172,15 @@ export default function StatsPage() {
               </div>
               <span className="text-right tabular-nums">
                 {num(r.sets ?? 0)}
-                <span className="text-ink-3">/{r.target!.min}</span>
+                <span className="text-ink-3">/{num(r.target!.min)}</span>
               </span>
             </li>
           ))}
         </ul>
-        <p className="mt-2 text-xs text-ink-3">Grått fält = målspann. • = fokusmuskel.</p>
+        <p className="mt-2 text-xs text-ink-3">Grått fält = målspann. Blått = din personliga zon. • = fokusmuskel.</p>
       </section>
+
+      <VolumeZones zones={zones} settings={settings} />
 
       {/* Strength trends */}
       <section className="card p-4">

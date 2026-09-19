@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { serverSupabase } from "@/lib/supabase/server";
 import { COACH_ROLE, DEFAULT_PRINCIPLES, profileText, renderPhilosophy, type Principle } from "@/lib/coach/knowledge";
-import { historySummary } from "@/lib/coach/context";
+import { feedbackSummary, historySummary } from "@/lib/coach/context";
 import { PROPOSE_PROGRAM_TOOL, PROPOSE_PROGRAM_TOOL_STRICT, draftProblem, isValidDraft, normalizeDraft, type ProgramDraft } from "@/lib/coach/program";
 
 export const runtime = "nodejs";
@@ -53,8 +53,9 @@ export async function POST(req: Request) {
   const ctx: string[] = [profileText(profile)];
   if (profile.use_history !== false) {
     try {
-      const h = await historySummary(sb);
+      const [h, fb] = await Promise.all([historySummary(sb), feedbackSummary(sb).catch(() => null)]);
       if (h) ctx.push(h);
+      if (fb) ctx.push(fb);
     } catch {
       // history is optional
     }

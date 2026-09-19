@@ -15,6 +15,8 @@ import { duration, effectiveLoad, num } from "@/lib/format";
 import type { Exercise, Workout, WorkoutSet } from "@/lib/types";
 import { STATUS_STYLE, StatusIcon } from "@/components/ProgressBadge";
 import VolumeAdjustments from "@/components/VolumeAdjustments";
+import CoachReview from "@/components/CoachReview";
+import type { Adjustment } from "@/lib/feedback";
 
 type PR = { exercise_id: string; kind: "e1rm" | "reps"; reps: number | null; load: number; previous: number | null };
 
@@ -28,6 +30,9 @@ export default function WorkoutSummary() {
   const [prs, setPrs] = useState<PR[]>([]);
   const [progress, setProgress] = useState<Map<string, PResult>>(new Map());
   const [exMap, setExMap] = useState<Map<string, Exercise>>(new Map());
+  const [suggestions, setSuggestions] = useState<Adjustment[] | null>(null);
+  const [veto, setVeto] = useState<Record<string, string>>({});
+  const [reviewing, setReviewing] = useState(true);
   const [comment, setComment] = useState<string | null>(null);
   const [progLoaded, setProgLoaded] = useState(false);
 
@@ -154,7 +159,9 @@ export default function WorkoutSummary() {
         )}
       </section>
 
-      <VolumeAdjustments workoutId={id} templateId={workout.template_id ?? null} />
+      <CoachReview workoutId={id} suggestions={suggestions} onVeto={setVeto} onDone={() => setReviewing(false)} />
+
+      <VolumeAdjustments workoutId={id} templateId={workout.template_id ?? null} veto={veto} waiting={reviewing} onReady={setSuggestions} />
 
       <section className="card p-4">
         <h2 className="mb-3 font-semibold">Nästa gång</h2>

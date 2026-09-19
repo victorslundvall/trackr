@@ -9,9 +9,23 @@ import { loadSettings } from "@/lib/settings";
 import { plannedWeekly, suggestAdjustments, type Adjustment, type MuscleFeedback, type TplEx } from "@/lib/feedback";
 import type { WeekPlan } from "@/lib/coach/program";
 import { spring } from "./motion";
+import { estimateZones, type FeedbackRow } from "@/lib/zones";
 
 /** After a program session: turn the muscle feedback into set changes for next time. */
-export default function VolumeAdjustments({ workoutId, templateId }: { workoutId: string; templateId: string | null }) {
+/** `veto`: muscle → coach's reason to keep the volume (from the coach review). Those rows start deselected. */
+export default function VolumeAdjustments({
+  workoutId,
+  templateId,
+  veto,
+  waiting,
+  onReady,
+}: {
+  workoutId: string;
+  templateId: string | null;
+  veto?: Record<string, string>;
+  waiting?: boolean; // coach review still running – hold the apply button
+  onReady?: (list: Adjustment[]) => void;
+}) {
   const [adj, setAdj] = useState<Adjustment[] | null>(null);
   const [names, setNames] = useState<Map<string, string>>(new Map());
   const [on, setOn] = useState<Record<string, boolean>>({});
@@ -19,21 +33,29 @@ export default function VolumeAdjustments({ workoutId, templateId }: { workoutId
   const [hadFeedback, setHadFeedback] = useState(false);
 
   useEffect(() => {
-    if (!templateId) return;
+    if (!templateId) {
+      onReady?.([]);
+      return;
+    }
     const sb = supabase();
     (async () => {
-      const [{ data: fb }, { data: tpl }, { data: done }, exs, settings] = await Promise.all([
+      const [{ data: fb }, { data: tpl }, { data: done }, exs, settings, { data: hist }] = await Promise.all([
         sb.from("muscle_feedback").select("muscle,recovery,pump,effort,joint_pain").eq("workout_id", workoutId),
         sb.from("templates").select("id,program_id").eq("id", templateId).single(),
         sb.from("set_adjustments").select("id").eq("workout_id", workoutId).limit(1),
         loadExercises(),
         loadSettings(),
+        sb.rpc("muscle_feedback_history", { p_weeks: 26 }),
       ]);
       const feedback = (fb ?? []) as MuscleFeedback[];
       setHadFeedback(feedback.length > 0);
-      if (!feedback.length || !tpl) return setAdj([]);
+      if (!feedback.length || !tpl) {
+        onReady?.([]);
+        return setAdj([]);
+      }
       if (done?.length) {
         setState("done");
+        onReady?.([]);
         return setAdj([]);
       }
       const exMap = new Map(exs.map((e) => [e.id, e]));
@@ -69,11 +91,28 @@ export default function VolumeAdjustments({ workoutId, templateId }: { workoutId
       const rows = (te ?? []) as { id: string; template_id: string; exercise_id: string; target_sets: number; position: number }[];
       const session = rows.filter((r) => r.template_id === templateId).sort((a, b) => a.position - b.position).map(toTpl);
       const weekly = plannedWeekly(rows.map(toTpl), templateIds.length, daysPerWeek);
-      const list = suggestAdjustments({ feedback, session, weekly, settings, deload });
+      const zones = estimateZones((hist ?? []) as FeedbackRow[]);
+      const list = suggestAdjustments({ feedback, session, weekly, settings, deload, zones });
       setAdj(list);
       setOn(Object.fromEntries(list.map((a) => [a.te_id, true])));
-    })();
+      onReady?.(list);
+    })().catch(() => onReady?.([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workoutId, templateId]);
+
+  // coach says keep → deselect those rows (once, when the veto arrives)
+  const vetoKey = JSON.stringify(veto ?? {});
+  useEffect(() => {
+    if (!veto || !adj?.length) return;
+    setOn((o) => {
+      const n = { ...o };
+      adj.forEach((a) => {
+        if (veto[a.muscle]) n[a.te_id] = false;
+      });
+      return n;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vetoKey, adj]);
 
   async function apply() {
     if (!adj) return;
@@ -121,6 +160,7 @@ export default function VolumeAdjustments({ workoutId, templateId }: { workoutId
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-semibold">{names.get(a.exercise_id) ?? "Övning"}</div>
                         <div className="text-xs text-ink-3">{a.reason}</div>
+                        {veto?.[a.muscle] && <div className="mt-0.5 text-xs text-sky">Coachen: {veto[a.muscle]}</div>}
                       </div>
                       <div className="shrink-0 text-sm font-bold tabular-nums">
                         {a.from} → <span className={up ? "text-accent" : "text-warm"}>{a.to}</span>
@@ -130,8 +170,8 @@ export default function VolumeAdjustments({ workoutId, templateId }: { workoutId
                 );
               })}
             </ul>
-            <motion.button whileTap={{ scale: 0.97 }} transition={spring} className="btn-primary mt-3 w-full py-3" onClick={apply} disabled={state === "saving" || !Object.values(on).some(Boolean)}>
-              {state === "saving" ? "Sparar…" : "Använd ändringarna"}
+            <motion.button whileTap={{ scale: 0.97 }} transition={spring} className="btn-primary mt-3 w-full py-3" onClick={apply} disabled={waiting || state === "saving" || !Object.values(on).some(Boolean)}>
+              {waiting ? "Coachen tittar på förslagen…" : state === "saving" ? "Sparar…" : "Använd ändringarna"}
             </motion.button>
           </motion.div>
         )}

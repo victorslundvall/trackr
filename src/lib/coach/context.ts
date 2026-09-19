@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluate, groupRows } from "../progression";
-import { MUSCLES } from "../format";
+import { MUSCLES, muscleLabel } from "../format";
+import { estimateZones, zoneText, type FeedbackRow } from "../zones";
 
 type Ex = { id: string; name: string; primary_muscles: string[]; is_bodyweight: boolean; category: string };
 
@@ -59,4 +60,66 @@ ${bodyweight ? `- Kroppsvikt: ${bodyweight} kg\n` : ""}- Snitt hårda set per mu
 
 Övningar (mest använda först), senaste toppset och status enligt appens progressionsregler:
 ${lines.join("\n")}`;
+}
+
+const LBL = {
+  recovery: ["", "fortfarande öm", "precis återställd", "pigg länge"],
+  pump: ["", "knappt", "bra", "grym"],
+  effort: ["", "lätt", "lagom", "maxat"],
+};
+const avg = (xs: (number | null)[]) => {
+  const v = xs.filter((x): x is number => x != null);
+  return v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1).replace(".", ",") : "–";
+};
+const d = (iso: string) => new Date(iso).toLocaleDateString("sv-SE", { day: "numeric", month: "short" });
+
+/**
+ * Muscle feedback, the set changes it led to, personal volume zones, recent PRs and coach reviews –
+ * so the coach can explain "why did I get fewer shoulder sets?" and reason about the self-adjusting program.
+ */
+export async function feedbackSummary(sb: SupabaseClient, opts: { weeks?: number } = {}) {
+  const weeks = opts.weeks ?? 6;
+  const since = new Date(Date.now() - weeks * 7 * 864e5).toISOString();
+  const [{ data: hist }, { data: adj }, { data: prs }, { data: reviews }] = await Promise.all([
+    sb.rpc("muscle_feedback_history", { p_weeks: 26 }),
+    sb.from("set_adjustments").select("exercise_id,muscle,from_sets,to_sets,reason,applied,created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(15),
+    sb.rpc("pr_timeline", { p_limit: 20 }),
+    sb.from("coach_reviews").select("summary,created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(3),
+  ]);
+  const rows = (hist ?? []) as FeedbackRow[];
+  const recent = rows.filter((r) => r.started_at >= since);
+  const prRows = ((prs ?? []) as { exercise_id: string; started_at: string; e1rm: number; previous: number }[]).filter(
+    (p) => p.started_at >= new Date(Date.now() - 30 * 864e5).toISOString(),
+  );
+  const adjRows = (adj ?? []) as { exercise_id: string; muscle: string; from_sets: number; to_sets: number; reason: string; applied: boolean; created_at: string }[];
+  if (!recent.length && !adjRows.length && !prRows.length) return null;
+
+  const ids = [...new Set([...adjRows.map((a) => a.exercise_id), ...prRows.map((p) => p.exercise_id)])];
+  const { data: exs } = ids.length ? await sb.from("exercises").select("id,name").in("id", ids) : { data: [] };
+  const name = new Map(((exs ?? []) as { id: string; name: string }[]).map((e) => [e.id, e.name]));
+  const zones = estimateZones(rows);
+
+  const byMuscle = new Map<string, FeedbackRow[]>();
+  recent.forEach((r) => byMuscle.set(r.muscle, [...(byMuscle.get(r.muscle) ?? []), r]));
+  const fbLines = [...byMuscle.entries()].map(([m, list]) => {
+    const trend = list
+      .slice(-4)
+      .map((r) => `${d(r.started_at)}: ${LBL.recovery[r.recovery ?? 0] || "?"}/${LBL.pump[r.pump ?? 0] || "?"}/${LBL.effort[r.effort ?? 0] || "?"}${r.joint_pain ? "/LEDKÄNNING" : ""} vid ${Number(r.week_sets).toFixed(1)} set senaste 7 d`)
+      .join("; ");
+    return `- ${muscleLabel(m)} (${list.length} svar, snitt återhämtning ${avg(list.map((r) => r.recovery))}, pump ${avg(list.map((r) => r.pump))}, ansträngning ${avg(list.map((r) => r.effort))}, ledkänning ${list.filter((r) => r.joint_pain).length} ggr) – senaste: ${trend}`;
+  });
+  const zoneLines = [...zones.values()].map((z) => `- ${muscleLabel(z.muscle)}: ${zoneText(z)}`);
+  const adjLines = adjRows.map(
+    (a) => `- ${d(a.created_at)} ${name.get(a.exercise_id) ?? "?"} ${a.from_sets}→${a.to_sets} set (${a.applied ? "godkänd" : "bortvald"}): ${a.reason}`,
+  );
+  const prLines = prRows.map((p) => `- ${d(p.started_at)} ${name.get(p.exercise_id) ?? "?"}: e1RM ${Number(p.e1rm).toFixed(1)} (förut ${Number(p.previous).toFixed(1)})`);
+  const revLines = ((reviews ?? []) as { summary: string | null; created_at: string }[]).filter((r) => r.summary).map((r) => `- ${d(r.created_at)}: ${r.summary}`);
+
+  return `# Muskelfeedback och självjusterande volym (senaste ${weeks} veckorna)
+Efter sista övningen för varje muskel svarar användaren på återhämtning sedan förra gången (1 öm – 3 pigg), pump (1–3) och ansträngning (1 lätt – 3 maxat) samt ev. ledkänning. Appen föreslår ±1 set per muskel utifrån svaren och volymmålen; användaren godkänner. Förklara ändringar utifrån detta när användaren frågar.
+${fbLines.length ? `\nFeedback per muskel (återhämtning/pump/ansträngning):\n${fbLines.join("\n")}` : ""}
+${zoneLines.length ? `\nPersonliga volymzoner (inlärda ur feedbacken – används i stället för standardmålen när säkerheten är medel/hög):\n${zoneLines.join("\n")}` : ""}
+${adjLines.length ? `\nSet-ändringar i programmet:\n${adjLines.join("\n")}` : ""}
+${prLines.length ? `\nRekord senaste 30 dagarna:\n${prLines.join("\n")}` : ""}
+${revLines.length ? `\nCoachens senaste bedömningar efter pass:\n${revLines.join("\n")}` : ""}`.replace(/\n{3,}/g, "\n\n");
 }

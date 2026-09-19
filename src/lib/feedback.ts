@@ -1,5 +1,6 @@
 import { muscleLabel } from "./format";
 import { TARGET_MUSCLES, volumeTarget, type UserSettings } from "./settings";
+import { effectiveTarget, type Zone } from "./zones";
 
 /** Answers per muscle, given after its last exercise in a session. */
 export type MuscleFeedback = {
@@ -33,6 +34,7 @@ export function suggestAdjustments(opts: {
   weekly: Record<string, number>; // planned hard sets per muscle per week in the whole program
   settings: UserSettings;
   deload: boolean;
+  zones?: Map<string, Zone>;
 }): Adjustment[] {
   if (opts.deload) return [];
   const out: Adjustment[] = [];
@@ -48,20 +50,20 @@ export function suggestAdjustments(opts: {
     if (f.effort === 3) (score -= 0.5), why.push("maxat");
     if (f.joint_pain) (score -= 1.5), why.push("känning i leder");
 
-    const target = volumeTarget(f.muscle, opts.settings);
+    const target = effectiveTarget(opts.zones?.get(f.muscle), volumeTarget(f.muscle, opts.settings));
+    const zoneWord = target?.personal ? "din zon" : "målet";
     const weekly = opts.weekly[f.muscle] ?? 0;
     let delta = score >= 1 ? 1 : score <= -1 ? -1 : 0;
 
     if (target) {
-      if (delta > 0 && weekly + 1 > target.max + 2) {
-        delta = 0; // already well above the range – more isn't better
-      }
+      // a personal ceiling we've actually seen recovery fail at is hard; otherwise allow a little exploring
+      if (delta > 0 && weekly + 1 > target.max + (target.tested ? 0 : 2)) delta = 0;
       if (delta < 0 && weekly - 1 < target.min && !f.joint_pain && f.recovery !== 1) {
         delta = 0; // don't cut below the range just because it felt hard
       }
       if (delta === 0 && weekly < target.min && f.recovery !== 1 && !f.joint_pain) {
         delta = 1;
-        why.push(`under målet (${fmt(weekly)}/${target.min} set i veckan)`);
+        why.push(`under ${zoneWord} (${fmt(weekly)}/${fmt(target.min)} set i veckan)`);
       }
     }
     if (!delta) continue;

@@ -31,13 +31,18 @@ export async function POST(req: Request) {
   if (!rows.length) return Response.json({ comment: null });
   const ids = rows.map((r) => r.exercise_id);
 
-  const [{ data: hist }, { data: prs }, tpl] = await Promise.all([
+  const [{ data: hist }, { data: prs }, tpl, { data: fb }] = await Promise.all([
     sb.rpc("progression_sessions", { p_exercises: ids, p_limit: 6, p_since: null, p_exclude_workout: null }),
     sb.rpc("workout_prs", { p_workout: workoutId }),
     w.template_id
       ? sb.from("template_exercises").select("exercise_id,target_sets,target_reps,target_rir").eq("template_id", w.template_id)
       : Promise.resolve({ data: [] as { exercise_id: string; target_sets: number; target_reps: string | null; target_rir: string | null }[] }),
+    sb.from("muscle_feedback").select("muscle,recovery,pump,effort,joint_pain").eq("workout_id", workoutId),
   ]);
+  const L = { r: ["", "fortfarande öm", "precis återställd", "pigg länge"], p: ["", "knappt", "bra", "grym"], e: ["", "lätt", "lagom", "maxat"] };
+  const fbTxt = ((fb ?? []) as { muscle: string; recovery: number | null; pump: number | null; effort: number | null; joint_pain: boolean }[])
+    .map((f) => `${f.muscle}: återhämtning ${L.r[f.recovery ?? 0] || "?"}, pump ${L.p[f.pump ?? 0] || "?"}, ansträngning ${L.e[f.effort ?? 0] || "?"}${f.joint_pain ? ", känning i leder" : ""}`)
+    .join("; ");
   const grouped = groupRows(hist ?? []);
   const targets = new Map(((tpl.data ?? []) as { exercise_id: string; target_sets: number; target_reps: string | null; target_rir: string | null }[]).map((t) => [t.exercise_id, t]));
 
@@ -63,8 +68,8 @@ export async function POST(req: Request) {
     .join("; ");
 
   const system =
-    "Du är Trakkr Coach. Skriv en kort kommentar på svenska (3–5 meningar, ingen rubrik, ingen punktlista) om passet användaren just gjort. Var konkret: nämn vad som gick bra (rekord, fler reps, vikt upp), vad som stod still eller gick sämre, och ge 1–2 tydliga råd inför nästa gång (t.ex. vilken övning att höja vikten på, eller att sikta på fler reps). Använd siffrorna. Var ärlig men uppmuntrande, som en PT som sms:ar. Hitta inte på data.";
-  const user = `Pass: ${w.name} (${new Date(w.started_at).toLocaleDateString("sv-SE")})\n${lines.join("\n")}\nRekord i passet: ${prTxt || "inga"}`;
+    "Du är Trakkr Coach. Skriv en kort kommentar på svenska (3–5 meningar, ingen rubrik, ingen punktlista) om passet användaren just gjort. Var konkret: nämn vad som gick bra (rekord, fler reps, vikt upp), vad som stod still eller gick sämre, och ge 1–2 tydliga råd inför nästa gång (t.ex. vilken övning att höja vikten på, eller att sikta på fler reps). Väg in muskelfeedbacken om den finns (t.ex. svag pump eller ledkänning). Använd siffrorna. Var ärlig men uppmuntrande, som en PT som sms:ar. Hitta inte på data.";
+  const user = `Pass: ${w.name} (${new Date(w.started_at).toLocaleDateString("sv-SE")})\n${lines.join("\n")}\nRekord i passet: ${prTxt || "inga"}${fbTxt ? `\nAnvändarens muskelfeedback: ${fbTxt}` : ""}`;
 
   try {
     const comment = await quickText(system, user, 800);

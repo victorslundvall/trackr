@@ -1,5 +1,7 @@
 import { serverSupabase } from "@/lib/supabase/server";
 import { quickText, userPhilosophy } from "@/lib/coach/server";
+import { feedbackSummary } from "@/lib/coach/context";
+import { estimateZones, effectiveTarget, type FeedbackRow } from "@/lib/zones";
 import { muscleLabel } from "@/lib/format";
 import { TARGET_MUSCLES, volumeTarget, type UserSettings } from "@/lib/settings";
 
@@ -32,6 +34,8 @@ export async function POST(req: Request) {
     sb.from("readiness").select("sleep,soreness,energy,stress,created_at").gte("created_at", `${week}T00:00:00`).lt("created_at", `${end}T00:00:00`),
     sb.from("user_settings").select("experience,focus_muscles").maybeSingle(),
   ]);
+  const { data: fbHist } = await sb.rpc("muscle_feedback_history", { p_weeks: 26 });
+  const zones = estimateZones((fbHist ?? []) as FeedbackRow[]);
 
   const rows = (summary ?? []) as { week: string; workouts: number; sets: number; volume: number }[];
   const cur = rows.find((r) => r.week === week) ?? { workouts: 0, sets: 0, volume: 0 };
@@ -40,8 +44,8 @@ export async function POST(req: Request) {
   const mRows = ((muscles ?? []) as { week: string; muscle: string; sets: number }[]).filter((m) => m.week === week);
   const muscleStats = TARGET_MUSCLES.map((m) => {
     const sets = Number(mRows.find((r) => r.muscle === m)?.sets ?? 0);
-    const t = volumeTarget(m, settings)!;
-    return { muscle: m, sets, min: t.min, max: t.max };
+    const t = effectiveTarget(zones.get(m), volumeTarget(m, settings))!;
+    return { muscle: m, sets, min: t.min, max: t.max, personal: t.personal };
   });
   const weekPrs = ((prs ?? []) as { exercise_id: string; started_at: string; e1rm: number; previous: number }[]).filter(
     (p) => p.started_at >= `${week}T00:00:00` && p.started_at < `${end}T00:00:00`,
@@ -73,10 +77,11 @@ export async function POST(req: Request) {
       `Vecka ${week} – ${addDays(week, 6)}.`,
       `Pass: ${stats.workouts} (förra veckan ${stats.prevWorkouts}). Arbetsset: ${stats.sets} (förra ${stats.prevSets}). Volym ${Math.round(stats.volume)} kg.`,
       `Passen: ${stats.sessions.map((s) => `${s.day.slice(5)} ${s.name}`).join("; ")}`,
-      `Set per muskel mot målspann: ${muscleStats.map((m) => `${muscleLabel(m.muscle)} ${m.sets}/${m.min}–${m.max}`).join(", ")}`,
+      `Set per muskel mot målspann (* = personlig zon inlärd ur feedbacken): ${muscleStats.map((m) => `${muscleLabel(m.muscle)} ${m.sets}/${m.min}–${m.max}${m.personal ? "*" : ""}`).join(", ")}`,
       `Fokusmuskler: ${settings.focus_muscles.map(muscleLabel).join(", ") || "inga"}`,
       stats.prs.length ? `Rekord: ${stats.prs.map((p) => `${p.name} e1RM ${p.e1rm.toFixed(1)} (+${p.gain.toFixed(1)})`).join("; ")}` : "Inga nya rekord.",
       stats.readiness ? `Dagsform snitt (1–5): sömn ${stats.readiness.sleep}, energi ${stats.readiness.energy}, träningsvärk ${stats.readiness.soreness}, stress ${stats.readiness.stress}` : "",
+      await feedbackSummary(sb, { weeks: 2 }).catch(() => null),
     ]
       .filter(Boolean)
       .join("\n");
@@ -84,7 +89,7 @@ export async function POST(req: Request) {
       ai = await quickText(
         `Du är användarens tränare. Skriv en kort veckorapport på svenska i Markdown (max ~120 ord):
 1. En mening om veckan som helhet.
-2. 2–3 punkter: vad som gick bra och vad som ligger efter (använd musklernas målspann; nämn bara det viktigaste).
+2. 2–3 punkter: vad som gick bra och vad som ligger efter (använd musklernas målspann; nämn bara det viktigaste). Finns muskelfeedback: nämn hur kroppen svarat (t.ex. ömhet som återkommer, pump som förbättrats) och vilka set-ändringar som gjorts.
 3. "**Nästa vecka:**" följt av 1–2 konkreta fokuspunkter.
 Ingen rubrik, inga emojis. Följ träningsfilosofin:
 ${philosophy}`,
