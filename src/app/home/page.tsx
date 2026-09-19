@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion } from "motion/react";
-import { ChevronRight, Flame, Play, Plus, Sparkles, Trophy } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { ChevronLeft, ChevronRight, Flame, Play, Plus, Sparkles, Trophy } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { activeWorkout, loadExercises, startWorkout } from "@/lib/data";
 import { loadProgression } from "@/lib/progress-data";
@@ -50,6 +50,8 @@ export default function Home() {
   const [names, setNames] = useState<Map<string, string>>(new Map());
   const [readyFor, setReadyFor] = useState<{ id: string; name: string } | null>(null);
   const [weekly, setWeekly] = useState<WeeklyReport | null>(null);
+  const [pick, setPick] = useState<number | null>(null); // program day chosen by swiping (null = next in line)
+  const [dir, setDir] = useState(1);
 
   useEffect(() => {
     activeWorkout().then(setActive);
@@ -158,10 +160,19 @@ export default function Home() {
   }, [muscles, settings]);
 
   const setCount = (w: Recent) => w.workout_exercises.reduce((n, we) => n + (we.sets[0]?.count ?? 0), 0);
-  const next = program?.templates.find((t) => t.id === program.progress?.next_template);
+  const days = program?.templates ?? [];
+  const nextIdx = Math.max(0, days.findIndex((t) => t.id === program?.progress?.next_template));
+  const shownIdx = pick ?? nextIdx;
+  const next = days[shownIdx];
+  const isNext = shownIdx === nextIdx;
   const wk = program?.week_plan?.find((w) => w.week === program.progress?.week);
   const nextSets = next?.template_exercises.reduce((a, e) => a + (e.target_sets ?? 0), 0) ?? 0;
   const nextName = next?.name.replace(/^Dag \d+ · /, "");
+  const go = (d: number) => {
+    if (!days.length) return;
+    setDir(d);
+    setPick((shownIdx + d + days.length) % days.length);
+  };
 
   return (
     <main className="space-y-4">
@@ -206,15 +217,71 @@ export default function Home() {
               </span>
             )}
           </div>
-          <div className="mt-3 flex items-end justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[11px] font-medium uppercase tracking-wide text-accent">Dag {next.day_index + 1} · nästa pass</div>
-              <div className="truncate text-2xl font-bold tracking-tight">{nextName}</div>
-              <div className="mt-0.5 text-sm text-ink-3">
-                {next.template_exercises.length} övningar · {nextSets} set
-              </div>
+          <div className="relative mt-3 flex items-center gap-1">
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <AnimatePresence mode="popLayout" initial={false} custom={dir}>
+                <motion.div
+                  key={next.id}
+                  custom={dir}
+                  variants={{
+                    enter: (d: number) => ({ x: d * 60, opacity: 0 }),
+                    center: { x: 0, opacity: 1 },
+                    exit: (d: number) => ({ x: d * -60, opacity: 0 }),
+                  }}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                  drag={days.length > 1 ? "x" : false}
+                  dragConstraints={{ left: 0, right: 0 }}
+                  dragElastic={0.4}
+                  onDragEnd={(_, i) => {
+                    if (i.offset.x < -45 || i.velocity.x < -400) go(1);
+                    else if (i.offset.x > 45 || i.velocity.x > 400) go(-1);
+                  }}
+                  className="cursor-grab touch-pan-y select-none active:cursor-grabbing"
+                >
+                  <div className={`text-[11px] font-medium uppercase tracking-wide ${isNext ? "text-accent" : "text-ink-2"}`}>
+                    Dag {next.day_index + 1} · {isNext ? "nästa pass" : "valt pass"}
+                  </div>
+                  <div className="truncate text-2xl font-bold tracking-tight">{nextName}</div>
+                  <div className="mt-0.5 text-sm text-ink-3">
+                    {next.template_exercises.length} övningar · {nextSets} set
+                  </div>
+                </motion.div>
+              </AnimatePresence>
             </div>
+            {days.length > 1 && (
+              <div className="flex shrink-0 gap-1">
+                <button className="rounded-lg p-2 text-ink-2 hover:bg-surface-2 active:scale-90" onClick={() => go(-1)} aria-label="Föregående pass">
+                  <ChevronLeft size={18} />
+                </button>
+                <button className="rounded-lg p-2 text-ink-2 hover:bg-surface-2 active:scale-90" onClick={() => go(1)} aria-label="Nästa pass">
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            )}
           </div>
+          {days.length > 1 && (
+            <div className="mt-2.5 flex items-center gap-1.5">
+              {days.map((d, i) => (
+                <button
+                  key={d.id}
+                  onClick={() => {
+                    setDir(i > shownIdx ? 1 : -1);
+                    setPick(i);
+                  }}
+                  aria-label={d.name}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${i === shownIdx ? "w-5 bg-accent" : i === nextIdx ? "w-1.5 bg-accent/50" : "w-1.5 bg-line"}`}
+                />
+              ))}
+              {!isNext && (
+                <button className="ml-auto text-xs text-ink-3 hover:text-ink-2" onClick={() => { setDir(nextIdx > shownIdx ? 1 : -1); setPick(null); }}>
+                  Tillbaka till nästa
+                </button>
+              )}
+            </div>
+          )}
           {program.progress?.weeks ? (
             <div className="mt-4 flex gap-1">
               {Array.from({ length: program.progress.weeks }, (_, i) => {

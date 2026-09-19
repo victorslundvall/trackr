@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowDown, ArrowUp, Disc3, Link2, ChevronLeft, MoreHorizontal, Pin, Plus, RefreshCw, Sparkles, StickyNote, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Disc3, History, Link2, ChevronLeft, MoreHorizontal, Pin, Plus, RefreshCw, Sparkles, StickyNote, Trash2, X } from "lucide-react";
 import PinnedNote from "@/components/PinnedNote";
+import ExerciseHistorySheet from "@/components/ExerciseHistorySheet";
 import PlateCalculator from "@/components/PlateCalculator";
 import { cachedNotes, loadNotes, saveNote } from "@/lib/notes";
 import type { ReadinessPlan } from "@/app/api/coach/readiness/route";
@@ -50,6 +51,7 @@ export default function WorkoutPage() {
   const [notes, setNotes] = useState<Map<string, string>>(new Map());
   const [plates, setPlates] = useState<number | null | undefined>(undefined);
   const [plan, setPlan] = useState<ReadinessPlan | null>(null);
+  const [history, setHistory] = useState<Exercise | null>(null);
   useEffect(() => setPlan(loadLocal<ReadinessPlan>(`plan:${id}`)), [id]);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
@@ -492,6 +494,10 @@ export default function WorkoutPage() {
               saveNote(b.ex.id, n);
               setNotes((m) => new Map(m).set(b.ex.id, n.trim()));
             }}
+            onHistory={() => {
+              setMenu(null);
+              setHistory(b.ex);
+            }}
             onPlates={() => {
               const s0 = b.sets.find((x) => !x.completed_at && x.set_type !== "warmup") ?? b.sets[0];
               const ph = s0 ? placeholderFor(b, b.sets.indexOf(s0)) : null;
@@ -530,6 +536,8 @@ export default function WorkoutPage() {
       )}
       </AnimatePresence>
 
+      <ExerciseHistorySheet exercise={history} workoutId={id} onClose={() => setHistory(null)} />
+
       <Sheet open={plates !== undefined} onClose={() => setPlates(undefined)}>
         <div className="eyebrow mb-3 text-accent">Skivkalkylator</div>
         <PlateCalculator initial={plates ?? undefined} compact />
@@ -566,6 +574,7 @@ function ExerciseBlock(props: {
   onSuperset: () => void;
   pinned: string;
   onPinned: (n: string) => void;
+  onHistory: () => void;
   onPlates: () => void;
 }) {
   const { b } = props;
@@ -636,6 +645,7 @@ function ExerciseBlock(props: {
               style={{ transformOrigin: "top right" }}
               className="absolute right-0 top-9 z-30 w-52 overflow-hidden rounded-xl border border-line bg-surface-2/95 shadow-2xl backdrop-blur-xl"
             >
+              <MenuItem icon={<History size={16} />} onClick={props.onHistory}>Historik</MenuItem>
               <MenuItem icon={<RefreshCw size={16} />} onClick={props.onReplace}>Byt övning</MenuItem>
               <MenuItem icon={<ArrowUp size={16} />} onClick={() => props.onMove(-1)}>Flytta upp</MenuItem>
               <MenuItem icon={<ArrowDown size={16} />} onClick={() => props.onMove(1)}>Flytta ner</MenuItem>

@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import Nav from "@/components/Nav";
 import AppFrame from "@/components/AppFrame";
+import ActiveWorkoutBar from "@/components/ActiveWorkoutBar";
 import RegisterSW from "@/components/RegisterSW";
 import { MotionProvider } from "@/components/motion";
 import SyncStatus from "@/components/SyncStatus";
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-dvh font-sans antialiased">
         <MotionProvider>
           <AppFrame>{children}</AppFrame>
+          <ActiveWorkoutBar />
           <Nav />
           <SyncStatus />
         </MotionProvider>

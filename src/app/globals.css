@@ -282,3 +282,8 @@ input[type="number"] {
   transition: fill 0.5s ease, opacity 0.25s ease, stroke 0.2s ease;
   animation: heat-in 0.55s var(--ease-out-expo) backwards;
 }
+
+/* room for the floating "active workout" bar */
+html[data-active-bar] .app-frame {
+  padding-bottom: 11rem;
+}
