@@ -14,6 +14,7 @@ import type { PResult } from "@/lib/progression";
 import { duration, effectiveLoad, num } from "@/lib/format";
 import type { Exercise, Workout, WorkoutSet } from "@/lib/types";
 import { STATUS_STYLE, StatusIcon } from "@/components/ProgressBadge";
+import VolumeAdjustments from "@/components/VolumeAdjustments";
 
 type PR = { exercise_id: string; kind: "e1rm" | "reps"; reps: number | null; load: number; previous: number | null };
 
@@ -152,6 +153,8 @@ export default function WorkoutSummary() {
           </ul>
         )}
       </section>
+
+      <VolumeAdjustments workoutId={id} templateId={workout.template_id ?? null} />
 
       <section className="card p-4">
         <h2 className="mb-3 font-semibold">Nästa gång</h2>

@@ -4,9 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowDown, ArrowUp, Disc3, History, Link2, ChevronLeft, MoreHorizontal, Pin, Plus, RefreshCw, Sparkles, StickyNote, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Disc3, History, Link2, ChevronLeft, Trophy, MoreHorizontal, Pin, Plus, RefreshCw, Sparkles, StickyNote, Trash2, X } from "lucide-react";
 import PinnedNote from "@/components/PinnedNote";
 import ExerciseHistorySheet from "@/components/ExerciseHistorySheet";
+import MuscleFeedbackCard from "@/components/MuscleFeedbackCard";
+import { TARGET_MUSCLES, type MuscleFeedback } from "@/lib/feedback";
+import { addToBests, checkPr, loadBests, type Bests, type LivePr } from "@/lib/prs";
 import PlateCalculator from "@/components/PlateCalculator";
 import { cachedNotes, loadNotes, saveNote } from "@/lib/notes";
 import type { ReadinessPlan } from "@/app/api/coach/readiness/route";
@@ -52,6 +55,21 @@ export default function WorkoutPage() {
   const [plates, setPlates] = useState<number | null | undefined>(undefined);
   const [plan, setPlan] = useState<ReadinessPlan | null>(null);
   const [history, setHistory] = useState<Exercise | null>(null);
+  // live PRs
+  const bests = useRef<Bests>(new Map());
+  const [prSets, setPrSets] = useState<Record<string, LivePr>>({});
+  const [toast, setToast] = useState<{ name: string; pr: LivePr; key: number } | null>(null);
+  // muscle feedback (muscle → answer or "skip")
+  const [feedback, setFeedback] = useState<Record<string, MuscleFeedback | "skip">>({});
+  useEffect(() => {
+    setPrSets(loadLocal<Record<string, LivePr>>(`prs:${id}`) ?? {});
+    setFeedback(loadLocal<Record<string, MuscleFeedback | "skip">>(`fb:${id}`) ?? {});
+  }, [id]);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3800);
+    return () => clearTimeout(t);
+  }, [toast]);
   useEffect(() => setPlan(loadLocal<ReadinessPlan>(`plan:${id}`)), [id]);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
@@ -147,7 +165,42 @@ export default function WorkoutPage() {
     loadProgression({ exerciseIds: exKey.split(","), excludeWorkout: id, overrides }).then(setProgress).catch(() => {});
     setNotes(cachedNotes());
     loadNotes(exKey.split(",")).then(setNotes);
+    loadBests(exKey.split(","), id).then((b) => {
+      // sets already done this session count as history for the ones that follow
+      blocksRef.current
+        .flatMap((bl) => bl.sets.filter((x) => x.completed_at && x.set_type !== "warmup").map((x) => ({ ex: bl.ex.id, x })))
+        .sort((a, c) => a.x.completed_at!.localeCompare(c.x.completed_at!))
+        .forEach(({ ex, x }) => {
+          const load = effectiveLoad(x);
+          if (load && x.reps) addToBests(b, ex, load, x.reps);
+        });
+      bests.current = b;
+    });
   }, [exKey, id, targets]);
+  const blocksRef = useRef<Block[]>([]);
+  blocksRef.current = blocks;
+
+  // which muscles get their feedback question after which block (the last block that trains it as primary)
+  const lastBlockFor = new Map<string, string>();
+  blocks.forEach((bl) => bl.ex.primary_muscles.forEach((m) => TARGET_MUSCLES.includes(m) && lastBlockFor.set(m, bl.we.id)));
+
+  function saveFeedback(list: MuscleFeedback[] | string[], skip = false) {
+    const next = { ...feedback };
+    if (skip) (list as string[]).forEach((m) => (next[m] = "skip"));
+    else
+      (list as MuscleFeedback[]).forEach((f) => {
+        next[f.muscle] = f;
+        enqueue({
+          table: "muscle_feedback",
+          kind: "upsert",
+          onConflict: "workout_id,muscle",
+          values: [{ workout_id: id, template_id: workout?.template_id ?? null, muscle: f.muscle, recovery: f.recovery, pump: f.pump, effort: f.effort, joint_pain: f.joint_pain }],
+        });
+      });
+    setFeedback(next);
+    saveLocal(`fb:${id}`, next);
+    haptic(10);
+  }
 
   function applySuggestion(b: Block) {
     const sug = progress.get(b.ex.id)?.suggestion;
@@ -223,7 +276,14 @@ export default function WorkoutPage() {
 
   function toggleDone(b: Block, idx: number) {
     const s = b.sets[idx];
-    if (s.completed_at) return editSet(s.id, { completed_at: null }, true);
+    if (s.completed_at) {
+      if (prSets[s.id]) {
+        const { [s.id]: _, ...rest } = prSets;
+        setPrSets(rest);
+        saveLocal(`prs:${id}`, rest);
+      }
+      return editSet(s.id, { completed_at: null }, true);
+    }
     const ph = placeholderFor(b, idx);
     const patch: Partial<WorkoutSet> = { completed_at: new Date().toISOString() };
     if (isCardio(b.ex)) {
@@ -238,7 +298,20 @@ export default function WorkoutPage() {
       if (s.reps == null && ph?.reps != null) patch.reps = ph.reps;
     }
     editSet(s.id, patch, true);
-    haptic(15);
+    // live PR check (not warmups, not cardio)
+    const merged = { ...s, ...patch };
+    const load = effectiveLoad(merged);
+    if (!isCardio(b.ex) && s.set_type !== "warmup" && load && merged.reps) {
+      const pr = checkPr(bests.current, b.ex.id, load, merged.reps);
+      addToBests(bests.current, b.ex.id, load, merged.reps);
+      if (pr) {
+        const next = { ...prSets, [s.id]: pr };
+        setPrSets(next);
+        saveLocal(`prs:${id}`, next);
+        setToast({ name: b.ex.name, pr, key: Date.now() });
+        haptic([30, 60, 30, 60, 90]);
+      } else haptic(15);
+    } else haptic(15);
     // In a superset, rest only after the last exercise of the group.
     const g = b.we.superset_group;
     if (g != null) {
@@ -498,6 +571,10 @@ export default function WorkoutPage() {
               setMenu(null);
               setHistory(b.ex);
             }}
+            prSets={prSets}
+            feedbackMuscles={live ? [...lastBlockFor].filter(([m, weId]) => weId === b.we.id && !feedback[m]).map(([m]) => m) : []}
+            onFeedback={(f) => saveFeedback(f)}
+            onSkipFeedback={(ms) => saveFeedback(ms, true)}
             onPlates={() => {
               const s0 = b.sets.find((x) => !x.completed_at && x.set_type !== "warmup") ?? b.sets[0];
               const ph = s0 ? placeholderFor(b, b.sets.indexOf(s0)) : null;
@@ -523,6 +600,49 @@ export default function WorkoutPage() {
           onPick={(exs) => (picker.replace ? replaceExercise(picker.replace, exs[0]) : addExercises(exs))}
         />
       )}
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key={toast.key}
+            initial={{ y: -80, opacity: 0, scale: 0.9 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: -60, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 420, damping: 26 }}
+            className="fixed inset-x-0 top-[max(0.75rem,env(safe-area-inset-top))] z-[60] flex justify-center px-4"
+            onClick={() => setToast(null)}
+          >
+            <div className="relative flex w-full max-w-md items-center gap-3 overflow-hidden rounded-2xl border border-accent/50 bg-surface/95 p-3 shadow-[0_16px_50px_-12px_rgb(0_0_0/0.9),0_0_40px_-10px_var(--color-accent)] backdrop-blur-xl">
+              {Array.from({ length: 8 }, (_, i) => (
+                <motion.span
+                  key={i}
+                  className="absolute left-8 top-1/2 h-1.5 w-1.5 rounded-full bg-accent"
+                  initial={{ x: 0, y: 0, opacity: 1 }}
+                  animate={{ x: Math.cos((i / 8) * Math.PI * 2) * 34, y: Math.sin((i / 8) * Math.PI * 2) * 34, opacity: 0 }}
+                  transition={{ duration: 0.8, delay: 0.15 }}
+                />
+              ))}
+              <motion.span
+                initial={{ rotate: -25, scale: 0.5 }}
+                animate={{ rotate: [0, -12, 12, 0], scale: 1 }}
+                transition={{ duration: 0.7 }}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-accent to-accent-2 text-accent-ink"
+              >
+                <Trophy size={22} />
+              </motion.span>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-bold text-accent">Nytt rekord!</div>
+                <div className="truncate text-sm font-medium">{toast.name}</div>
+                <div className="text-xs text-ink-2 tabular-nums">
+                  {toast.pr.kind === "e1rm"
+                    ? `e1RM ${num(toast.pr.value)} kg (+${num(toast.pr.value - toast.pr.previous)})`
+                    : `${num(toast.pr.value)} kg × ${toast.pr.reps} – tyngst för ${toast.pr.reps}+ reps (förut ${num(toast.pr.previous)})`}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
       {rest && (
@@ -575,6 +695,10 @@ function ExerciseBlock(props: {
   pinned: string;
   onPinned: (n: string) => void;
   onHistory: () => void;
+  prSets: Record<string, LivePr>;
+  feedbackMuscles: string[];
+  onFeedback: (f: MuscleFeedback[]) => void;
+  onSkipFeedback: (muscles: string[]) => void;
   onPlates: () => void;
 }) {
   const { b } = props;
@@ -726,13 +850,20 @@ function ExerciseBlock(props: {
                   } ${open ? "bg-surface-2" : "hover:bg-surface-2"}`}
                   aria-label="Setdetaljer"
                 >
-                  {label}
+                  {props.prSets[s.id] ? (
+                    <motion.span initial={{ scale: 0, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 500, damping: 14 }} className="flex justify-center text-accent">
+                      <Trophy size={16} strokeWidth={2.4} />
+                    </motion.span>
+                  ) : (
+                    label
+                  )}
                   {(s.rpe != null || s.rir != null) && (
                     <span className="block text-[9px] font-medium leading-none text-ink-3">{s.rpe != null ? `@${num(s.rpe)}` : `R${num(s.rir)}`}</span>
                   )}
                 </button>
-                <span className="truncate text-sm text-ink-3 tabular-nums">
-                  {prevTxt}
+                <span className="min-w-0 text-sm text-ink-3 tabular-nums">
+                  <span className="block truncate">{prevTxt}</span>
+                  <Delta s={s} ph={ph} cardio={cardio} bw={bw} />
                 </span>
                 <NumInput
                   value={cardio ? s.distance_km : bw ? s.extra_weight : s.weight}
@@ -760,7 +891,44 @@ function ExerciseBlock(props: {
       <button className="w-full rounded-b-2xl py-3 text-sm font-medium text-ink-2 transition hover:bg-surface-2/60 hover:text-ink active:scale-[0.98]" onClick={props.onAddSet}>
         + Lägg till set
       </button>
+      <AnimatePresence>
+        {props.feedbackMuscles.length > 0 && b.sets.some((x) => x.set_type !== "warmup") && b.sets.filter((x) => x.set_type !== "warmup").every((x) => x.completed_at) && (
+          <motion.div key="fb" exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+            <MuscleFeedbackCard muscles={props.feedbackMuscles} onSave={props.onFeedback} onSkip={() => props.onSkipFeedback(props.feedbackMuscles)} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.section>
+  );
+}
+
+/** "+2,5 kg" / "+1 rep" versus the same set last time. */
+function Delta({ s, ph, cardio, bw }: { s: WorkoutSet; ph: WorkoutSet | null; cardio: boolean; bw: boolean }) {
+  if (!ph || cardio) return null;
+  const cur = bw ? (s.extra_weight ?? (s.reps != null ? 0 : null)) : s.weight;
+  const prev = bw ? (ph.extra_weight ?? 0) : ph.weight;
+  if (cur == null && s.reps == null) return null;
+  const w = cur != null && prev != null ? Number(cur) - Number(prev) : 0;
+  const r = s.reps != null && ph.reps != null ? s.reps - ph.reps : 0;
+  let txt: string | null = null;
+  let up = true;
+  if (Math.abs(w) > 1e-9) {
+    up = w > 0;
+    txt = `${up ? "+" : "−"}${num(Math.abs(w), 2)} kg`;
+  } else if (r !== 0) {
+    up = r > 0;
+    txt = `${up ? "+" : "−"}${Math.abs(r)} rep`;
+  }
+  if (!txt) return null;
+  return (
+    <motion.span
+      key={txt}
+      initial={{ opacity: 0, y: 3 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`mt-0.5 inline-block rounded px-1 text-[10px] font-semibold leading-4 ${up ? "bg-accent/15 text-accent" : "bg-surface-2 text-ink-3"}`}
+    >
+      {txt}
+    </motion.span>
   );
 }
 
